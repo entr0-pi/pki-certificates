@@ -1,0 +1,44 @@
+# Agents
+.claude
+
+# Python/cache
+__pycache__/
+*.py[cod]
+*.pyo
+
+# Virtual environments
+.venv/
+venv/
+
+# Environment/secrets
+.env
+.env.*
+!.env.example
+!docker/.env.example
+*.secret
+*.secrets
+
+# PKI sensitive artifacts
+*.key
+*.pem
+*.pwd
+*.csr
+*.p12
+*.pfx
+*.der
+*.crt
+*.cer
+*.srl
+
+# Local runtime/test data
+data/
+/org*
+/test_org*
+*.db
+*.sqlite
+*.sqlite3
+pki.*
+.pytest_cache
+
+# Logs
+*.log

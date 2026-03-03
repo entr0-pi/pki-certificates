@@ -1,0 +1,549 @@
+{% import "partials/shared_macros.html" as ui %}
+<!DOCTYPE html>
+<html lang="en" data-theme="cupcake">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Create Certificate - {{ organization.name }}</title>
+    <link href="https://cdn.jsdelivr.net/npm/daisyui@4.6.0/dist/full.min.css" rel="stylesheet" type="text/css" />
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        .required-marker {
+            color: hsl(var(--er));
+            margin-left: 0.25rem;
+            font-weight: 700;
+        }
+    </style>
+</head>
+<body class="bg-base-200 min-h-screen p-4 md:p-6">
+    {% set perms = ui_permissions if ui_permissions is defined else {} %}
+    <div class="container mx-auto max-w-6xl">
+        {{ ui.breadcrumb([
+            {"label": "Home", "href": "/"},
+            {"label": organization.name, "href": "/organizations/" ~ organization.id ~ "/manage"},
+            {"label": "Create Certificate", "href": None}
+        ]) }}
+
+        <div class="card bg-base-100 shadow-xl mb-6">
+            <div class="card-body">
+                <h1 class="text-3xl font-semibold">Unified Certificate Creation</h1>
+                <p class="text-sm text-base-content/70">
+                    Mode-based workflow for root, intermediate, and end-entity certificates.
+                </p>
+                <div class="badge badge-outline mt-2">Role: {{ role }}</div>
+            </div>
+        </div>
+
+        <div class="tabs tabs-lifted mb-4">
+            <button type="button" class="tab tab-active" data-mode="root">Root CA</button>
+            <button type="button" class="tab" data-mode="intermediate">Intermediate CA</button>
+            <button type="button" class="tab" data-mode="end-entity">End-Entity</button>
+        </div>
+
+        <div id="smartDefaults" class="card bg-base-100 shadow mb-4">
+            <div class="card-body p-4">
+                <h2 class="font-semibold">Smart Defaults</h2>
+                <p class="text-xs text-base-content/70">Fields can be prefilled from issuer policy and organization context. Locked fields are read-only.</p>
+            </div>
+        </div>
+
+        <div id="panel-root" class="mode-panel card bg-base-100 shadow-xl mb-5">
+            <div class="card-body">
+                {% if not perms.get("can_create_root", False) %}
+                {{ ui.alert("warning", "Permission Required", "Your role cannot create Root CA certificates.") }}
+                {% elif root_ca_exists %}
+                {{ ui.alert("info", "Root CA Already Exists", "Only one Root CA is allowed per organization. Existing Root CA: " ~ root_ca) }}
+                {% else %}
+                <form action="/organizations/{{ organization.id }}/root-ca" method="post" class="space-y-3 cert-form">
+                    <div class="grid md:grid-cols-3 gap-3">
+                        <!-- Row 1: Name, CN, Email -->
+                        <div class="form-control">
+                            <label class="label"><span class="label-text text-sm">Name</span></label>
+                            <input class="input input-bordered input-sm" name="cert_name" placeholder="root-ca" required>
+                        </div>
+                        <div class="form-control">
+                            <label class="label"><span class="label-text text-sm">Common Name (CN)</span></label>
+                            <input class="input input-bordered input-sm" name="CN" placeholder="{{ organization.name }} Root CA" required>
+                        </div>
+                        <div class="form-control">
+                            <label class="label"><span class="label-text text-sm">Email</span></label>
+                            <input class="input input-bordered input-sm" name="email" placeholder="pki@example.com">
+                        </div>
+                        <!-- Row 2: Organization, Org Unit -->
+                        <div class="form-control">
+                            <label class="label"><span class="label-text text-sm">Organization (O)</span></label>
+                            <input class="input input-bordered input-sm" name="O" placeholder="{{ organization.name }}" required>
+                        </div>
+                        <div class="form-control md:col-span-2">
+                            <label class="label"><span class="label-text text-sm">Org Unit (OU)</span></label>
+                            <input class="input input-bordered input-sm" name="OU" placeholder="PKI" required>
+                        </div>
+                        <!-- Row 3: Country, State, City -->
+                        <div class="form-control">
+                            <label class="label"><span class="label-text text-sm">Country (C)</span></label>
+                            <input class="input input-bordered input-sm" name="C" maxlength="2" placeholder="CA" required>
+                        </div>
+                        <div class="form-control">
+                            <label class="label"><span class="label-text text-sm">State/Province (ST)</span></label>
+                            <input class="input input-bordered input-sm" name="ST" placeholder="Quebec" required>
+                        </div>
+                        <div class="form-control">
+                            <label class="label"><span class="label-text text-sm">City/Locality (L)</span></label>
+                            <input class="input input-bordered input-sm" name="L" placeholder="Montreal" required>
+                        </div>
+                        <!-- Row 4: Certificate Valid, EC Curve -->
+                        <div class="form-control md:col-span-2" data-force-required-marker="true">
+                            <label class="label"><span class="label-text text-sm">Certificate Valid For</span></label>
+                            <div class="flex flex-col md:flex-row md:items-center gap-3 mb-2">
+                                <div class="flex gap-3">
+                                    <label class="flex items-center gap-2">
+                                        <input type="radio" name="duration_type" value="days" class="radio radio-sm" checked data-form="root">
+                                        <span class="text-sm">Days</span>
+                                    </label>
+                                    <label class="flex items-center gap-2">
+                                        <input type="radio" name="duration_type" value="date" class="radio radio-sm" data-form="root">
+                                        <span class="text-sm">Expire on Date</span>
+                                    </label>
+                                </div>
+                                <div>
+                                    <div id="days-input-root" class="flex gap-2">
+                                        <input type="number" class="input input-bordered input-sm w-24" placeholder="Days" value="7300" data-form="root" data-type="days">
+                                    </div>
+                                    <div id="date-input-root" class="hidden">
+                                        <input type="date" class="input input-bordered input-sm" data-form="root" data-type="date">
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="form-control" data-force-required-marker="true">
+                            <label class="label"><span class="label-text text-sm">EC Curve</span></label>
+                            <select class="select select-bordered select-sm" name="eccurve">
+                                <option value="">Default curve</option>
+                                <option value="secp256r1">secp256r1</option>
+                                <option value="secp384r1">secp384r1</option>
+                                <option value="secp521r1">secp521r1</option>
+                            </select>
+                        </div>
+                    </div>
+                    <input type="hidden" name="subjectAltName" value="">
+                    <input type="hidden" name="renewal_of_cert_id" value="">
+                    <input type="hidden" name="enddate">
+                    <div class="flex gap-2">
+                        <button class="btn btn-primary" type="submit">Create Root CA</button>
+                        <button class="btn btn-outline create-another-btn" type="submit">Create & Create Another</button>
+                    </div>
+                </form>
+                {% endif %}
+            </div>
+        </div>
+
+        <div id="panel-intermediate" class="mode-panel card bg-base-100 shadow-xl mb-5 hidden">
+            <div class="card-body">
+                {% if not perms.get("can_create_intermediate", False) %}
+                {{ ui.alert("warning", "Permission Required", "Your role cannot create Intermediate CA certificates.") }}
+                {% elif not root_ca %}
+                {{ ui.alert("warning", "Missing Root CA", "Create a Root CA first, then create an Intermediate CA.") }}
+                {% else %}
+                <div class="badge badge-info mb-3">Issuer Root CA: {{ root_ca }}</div>
+                <form action="/organizations/{{ organization.id }}/intermediate-ca" method="post" class="space-y-3 cert-form">
+                    <div class="grid md:grid-cols-3 gap-3">
+                        <!-- Row 1: Name, CN, Email -->
+                        <div class="form-control">
+                            <label class="label"><span class="label-text text-sm">Name</span></label>
+                            <input class="input input-bordered input-sm" name="cert_name" placeholder="intermediate-ca" required>
+                        </div>
+                        <div class="form-control">
+                            <label class="label"><span class="label-text text-sm">Common Name (CN)</span></label>
+                            <input class="input input-bordered input-sm" name="CN" placeholder="{{ organization.name }} Intermediate CA" required>
+                        </div>
+                        <div class="form-control">
+                            <label class="label"><span class="label-text text-sm">Email</span></label>
+                            <input id="int_email" class="input input-bordered input-sm" name="email" placeholder="pki@example.com">
+                        </div>
+                        <!-- Row 2: Organization, Org Unit -->
+                        <div class="form-control">
+                            <label class="label"><span class="label-text text-sm">Organization (O)</span></label>
+                            <input id="int_o" class="input input-bordered input-sm" name="O" placeholder="{{ organization.name }}" required>
+                        </div>
+                        <div class="form-control md:col-span-2">
+                            <label class="label"><span class="label-text text-sm">Org Unit (OU)</span></label>
+                            <input id="int_ou" class="input input-bordered input-sm" name="OU" placeholder="PKI" required>
+                        </div>
+                        <!-- Row 3: Country, State, City -->
+                        <div class="form-control">
+                            <label class="label"><span class="label-text text-sm">Country (C)</span></label>
+                            <input id="int_c" class="input input-bordered input-sm" name="C" maxlength="2" placeholder="CA" required>
+                        </div>
+                        <div class="form-control">
+                            <label class="label"><span class="label-text text-sm">State/Province (ST)</span></label>
+                            <input id="int_st" class="input input-bordered input-sm" name="ST" placeholder="Quebec" required>
+                        </div>
+                        <div class="form-control">
+                            <label class="label"><span class="label-text text-sm">City/Locality (L)</span></label>
+                            <input id="int_l" class="input input-bordered input-sm" name="L" placeholder="Montreal" required>
+                        </div>
+                        <!-- Row 4: Certificate Valid, EC Curve -->
+                        <div class="form-control md:col-span-2" data-force-required-marker="true">
+                            <label class="label"><span class="label-text text-sm">Certificate Valid For</span></label>
+                            <div class="flex flex-col md:flex-row md:items-center gap-3 mb-2">
+                                <div class="flex gap-3">
+                                    <label class="flex items-center gap-2">
+                                        <input type="radio" name="duration_type" value="days" class="radio radio-sm" checked data-form="intermediate">
+                                        <span class="text-sm">Days</span>
+                                    </label>
+                                    <label class="flex items-center gap-2">
+                                        <input type="radio" name="duration_type" value="date" class="radio radio-sm" data-form="intermediate">
+                                        <span class="text-sm">Expire on Date</span>
+                                    </label>
+                                </div>
+                                <div>
+                                    <div id="days-input-intermediate" class="flex gap-2">
+                                        <input type="number" class="input input-bordered input-sm w-24" placeholder="Days" value="3650" data-form="intermediate" data-type="days">
+                                    </div>
+                                    <div id="date-input-intermediate" class="hidden">
+                                        <input type="date" class="input input-bordered input-sm" data-form="intermediate" data-type="date">
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="form-control" data-force-required-marker="true">
+                            <label class="label"><span class="label-text text-sm">EC Curve</span></label>
+                            <select class="select select-bordered select-sm" name="eccurve">
+                                <option value="">Default curve</option>
+                                <option value="secp256r1">secp256r1</option>
+                                <option value="secp384r1">secp384r1</option>
+                                <option value="secp521r1">secp521r1</option>
+                            </select>
+                        </div>
+                    </div>
+                    <input type="hidden" name="subjectAltName" value="">
+                    <input type="hidden" name="renewal_of_cert_id" value="">
+                    <input type="hidden" name="enddate">
+                    <div class="flex gap-2">
+                        <button class="btn btn-primary" type="submit">Create Intermediate CA</button>
+                        <button class="btn btn-outline create-another-btn" type="submit">Create & Create Another</button>
+                    </div>
+                </form>
+                {% endif %}
+            </div>
+        </div>
+
+        <div id="panel-end-entity" class="mode-panel card bg-base-100 shadow-xl">
+            <div class="card-body">
+                {% if not perms.get("can_create_end_entity", False) %}
+                {{ ui.alert("warning", "Permission Required", "Your role cannot create End-Entity certificates.") }}
+                {% elif not issuers %}
+                {{ ui.alert("warning", "Missing Issuer", "Create an active Intermediate CA first.") }}
+                {% else %}
+                <form action="/organizations/{{ organization.id }}/end-entity" method="post" class="space-y-3 cert-form" id="endEntityForm">
+                    <input type="hidden" name="issuer_type" value="intermediate">
+                    <input type="hidden" name="renewal_of_cert_id" value="">
+                    <input type="hidden" name="subjectAltName" id="sanHidden" value="">
+                    <input type="hidden" name="enddate">
+
+                    <div class="form-control">
+                        <label class="label"><span class="label-text text-sm">Certificate Type</span></label>
+                        <div class="join w-full">
+                            <button type="button" class="join-item btn flex-1 btn-primary" data-ee-type="server">Server</button>
+                            <button type="button" class="join-item btn flex-1 btn-outline" data-ee-type="client">Client</button>
+                            <button type="button" class="join-item btn flex-1 btn-outline" data-ee-type="email">Email</button>
+                        </div>
+                        <input type="hidden" name="cert_type" id="eeType" value="server">
+                    </div>
+
+                    <div class="grid md:grid-cols-3 gap-3">
+                        <!-- Row 1: Issuer CA -->
+                        <div class="form-control md:col-span-3">
+                            <label class="label"><span class="label-text text-sm">Issuer CA</span></label>
+                            <select class="select select-bordered select-sm" name="issuer_name" id="issuerName" required>
+                                <option value="">Select issuer...</option>
+                                {% for issuer in issuers %}
+                                <option value="{{ issuer.name }}">{{ issuer.display }}</option>
+                                {% endfor %}
+                            </select>
+                        </div>
+                        <!-- Row 2: Name, CN, Email -->
+                        <div class="form-control">
+                            <label class="label"><span class="label-text text-sm">Name</span></label>
+                            <input class="input input-bordered input-sm" name="cert_name" id="eeCertName" placeholder="server-01" required>
+                        </div>
+                        <div class="form-control">
+                            <label class="label"><span class="label-text text-sm">Common Name (CN)</span></label>
+                            <input class="input input-bordered input-sm" name="CN" id="eeCN" placeholder="api.example.local" required>
+                        </div>
+                        <div class="form-control">
+                            <label class="label"><span class="label-text text-sm">Email</span></label>
+                            <input class="input input-bordered input-sm" name="email" id="eeEmail" placeholder="optional@example.com">
+                        </div>
+                        <!-- Row 3: Organization, Org Unit -->
+                        <div class="form-control">
+                            <label class="label"><span class="label-text text-sm">Organization (O)</span></label>
+                            <input id="ee_o" class="input input-bordered input-sm" name="O" placeholder="{{ organization.name }}" required>
+                        </div>
+                        <div class="form-control md:col-span-2">
+                            <label class="label"><span class="label-text text-sm">Org Unit (OU)</span></label>
+                            <input id="ee_ou" class="input input-bordered input-sm" name="OU" placeholder="IT" required>
+                        </div>
+                        <!-- Row 4: Country, State, City -->
+                        <div class="form-control">
+                            <label class="label"><span class="label-text text-sm">Country (C)</span></label>
+                            <input id="ee_c" class="input input-bordered input-sm" name="C" maxlength="2" placeholder="CA" required>
+                        </div>
+                        <div class="form-control">
+                            <label class="label"><span class="label-text text-sm">State/Province (ST)</span></label>
+                            <input id="ee_st" class="input input-bordered input-sm" name="ST" placeholder="Quebec" required>
+                        </div>
+                        <div class="form-control">
+                            <label class="label"><span class="label-text text-sm">City/Locality (L)</span></label>
+                            <input id="ee_l" class="input input-bordered input-sm" name="L" placeholder="Montreal" required>
+                        </div>
+                        <!-- Row 6: Certificate Valid, EC Curve -->
+                        <div class="form-control md:col-span-2" data-force-required-marker="true">
+                            <label class="label"><span class="label-text text-sm">Certificate Valid For</span></label>
+                            <div class="flex flex-col md:flex-row md:items-center gap-3 mb-2">
+                                <div class="flex gap-3">
+                                    <label class="flex items-center gap-2">
+                                        <input type="radio" name="duration_type" value="days" class="radio radio-sm" checked data-form="end-entity">
+                                        <span class="text-sm">Days</span>
+                                    </label>
+                                    <label class="flex items-center gap-2">
+                                        <input type="radio" name="duration_type" value="date" class="radio radio-sm" data-form="end-entity">
+                                        <span class="text-sm">Expire on Date</span>
+                                    </label>
+                                </div>
+                                <div>
+                                    <div id="days-input-end-entity" class="flex gap-2">
+                                        <input type="number" class="input input-bordered input-sm w-24" placeholder="Days" value="825" data-form="end-entity" data-type="days">
+                                    </div>
+                                    <div id="date-input-end-entity" class="hidden">
+                                        <input type="date" class="input input-bordered input-sm" data-form="end-entity" data-type="date">
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="form-control" data-force-required-marker="true">
+                            <label class="label"><span class="label-text text-sm">EC Curve</span></label>
+                            <select class="select select-bordered select-sm" name="eccurve">
+                                <option value="">Default curve</option>
+                                <option value="secp256r1">secp256r1</option>
+                                <option value="secp384r1">secp384r1</option>
+                                <option value="secp521r1">secp521r1</option>
+                            </select>
+                        </div>
+                    </div>
+
+                    <!-- Row 5: SAN (for server only) -->
+                    <div id="sanSection">
+                        <label class="label"><span class="label-text text-sm">Subject Alternative Names (SANs)</span></label>
+                        <div id="sanRows" class="space-y-2"></div>
+                        <button type="button" class="btn btn-sm btn-outline mt-2" onclick="addSanRow()">+ Add SAN</button>
+                    </div>
+                    <div class="flex gap-2">
+                        <button class="btn btn-primary" type="submit">Create End-Entity</button>
+                        <button class="btn btn-outline create-another-btn" type="submit">Create & Create Another</button>
+                    </div>
+                </form>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const tabs = Array.from(document.querySelectorAll("[data-mode]"));
+        const panels = {
+            root: document.getElementById("panel-root"),
+            intermediate: document.getElementById("panel-intermediate"),
+            "end-entity": document.getElementById("panel-end-entity")
+        };
+        let currentMode = "root";
+        function setMode(mode) {
+            currentMode = mode;
+            tabs.forEach(t => t.classList.toggle("tab-active", t.dataset.mode === mode));
+            Object.entries(panels).forEach(([k, el]) => el.classList.toggle("hidden", k !== mode));
+        }
+        tabs.forEach(t => t.addEventListener("click", () => setMode(t.dataset.mode)));
+
+        const issuerFieldsIntermediate = {{ issuer_subject_fields|tojson }};
+        const lockedIntermediate = {{ locked_fields_intermediate|tojson }};
+        const lockedEndEntity = {{ locked_fields_end_entity|tojson }};
+        const issuerSubjectMap = JSON.parse({{ issuer_subject_map_json|tojson }});
+
+        function applyLocked(fieldId, source, key, lockedKeys) {
+            const el = document.getElementById(fieldId);
+            if (!el) return;
+            const locked = lockedKeys.includes(key);
+            if (locked) {
+                el.value = source[key] || "";
+                el.readOnly = true;
+                el.classList.add("input-disabled");
+            } else {
+                el.readOnly = false;
+                el.classList.remove("input-disabled");
+            }
+        }
+
+        function syncRequiredMarkers(root = document) {
+            const controls = root.querySelectorAll(".form-control");
+            controls.forEach((control) => {
+                const labelText = control.querySelector(".label .label-text");
+                if (!labelText) return;
+                const field = control.querySelector("input:not([type='hidden']), select, textarea");
+                if (!field) return;
+                const marker = labelText.querySelector(".required-marker");
+                const forcedRequired = control.dataset.forceRequiredMarker === "true";
+                const required = field.required || forcedRequired;
+
+                if (required && !marker) {
+                    const star = document.createElement("span");
+                    star.className = "required-marker";
+                    star.textContent = "*";
+                    labelText.appendChild(star);
+                } else if (!required && marker) {
+                    marker.remove();
+                }
+            });
+        }
+
+        ["C","ST","L","O","OU","email"].forEach((k) => applyLocked("int_" + k.toLowerCase(), issuerFieldsIntermediate, k, lockedIntermediate));
+
+        function applyEndEntityLocks() {
+            const issuer = document.getElementById("issuerName");
+            if (!issuer) return;
+            const values = issuerSubjectMap[issuer.value] || {};
+            ["C","ST","L","O","OU","email"].forEach((k) => applyLocked("ee_" + k.toLowerCase(), values, k, lockedEndEntity));
+        }
+
+        const eeType = document.getElementById("eeType");
+        const eeButtons = Array.from(document.querySelectorAll("[data-ee-type]"));
+        function setEndEntityType(type) {
+            if (!eeType) return;
+            eeType.value = type;
+            eeButtons.forEach((b) => {
+                const active = b.dataset.eeType === type;
+                b.classList.toggle("btn-primary", active);
+                b.classList.toggle("btn-outline", !active);
+            });
+            const sanSection = document.getElementById("sanSection");
+            const eeEmail = document.getElementById("eeEmail");
+            if (type === "server") {
+                sanSection.classList.remove("hidden");
+                eeEmail.required = false;
+                if (!document.getElementById("sanRows").children.length) addSanRow();
+            } else if (type === "email") {
+                sanSection.classList.add("hidden");
+                eeEmail.required = true;
+                document.getElementById("sanRows").innerHTML = "";
+                document.getElementById("sanHidden").value = "";
+            } else {
+                sanSection.classList.add("hidden");
+                eeEmail.required = false;
+                document.getElementById("sanRows").innerHTML = "";
+                document.getElementById("sanHidden").value = "";
+            }
+            syncRequiredMarkers(document.getElementById("panel-end-entity"));
+        }
+        eeButtons.forEach((b) => b.addEventListener("click", () => setEndEntityType(b.dataset.eeType)));
+
+        function addSanRow(type = "DNS", value = "") {
+            const row = document.createElement("div");
+            row.className = "flex gap-2";
+            row.innerHTML = `<select class="select select-bordered select-sm w-24"><option>DNS</option><option>IP</option><option>URI</option><option>EMAIL</option></select><input class="input input-bordered input-sm flex-1" value="${value}" placeholder="value"><button type="button" class="btn btn-sm btn-ghost text-error">x</button>`;
+            const btn = row.querySelector("button");
+            const sel = row.querySelector("select");
+            sel.value = type;
+            btn.addEventListener("click", () => { row.remove(); buildSan(); });
+            row.querySelector("input").addEventListener("input", () => { buildSan(); });
+            sel.addEventListener("change", () => { buildSan(); });
+            document.getElementById("sanRows").appendChild(row);
+            buildSan();
+        }
+
+        function buildSan() {
+            const rows = Array.from(document.querySelectorAll("#sanRows > div"));
+            const parts = rows.map((row) => {
+                const t = row.querySelector("select").value;
+                const v = row.querySelector("input").value.trim();
+                return v ? `${t}:${v}` : "";
+            }).filter(Boolean);
+            const hidden = document.getElementById("sanHidden");
+            if (hidden) hidden.value = parts.join(", ");
+        }
+
+        document.getElementById("issuerName")?.addEventListener("change", () => { applyEndEntityLocks(); });
+
+        document.querySelectorAll(".create-another-btn").forEach((btn) => {
+            btn.addEventListener("click", () => {
+                btn.form.setAttribute("target", "_blank");
+                setTimeout(() => btn.form.removeAttribute("target"), 0);
+            });
+        });
+
+        setMode("root");
+        setEndEntityType("server");
+        applyEndEntityLocks();
+        syncRequiredMarkers();
+
+        const requiredObserver = new MutationObserver((mutations) => {
+            if (mutations.some((m) => m.type === "attributes" && m.attributeName === "required")) {
+                syncRequiredMarkers();
+            }
+        });
+        document.querySelectorAll("input, select, textarea").forEach((field) => {
+            requiredObserver.observe(field, { attributes: true, attributeFilter: ["required"] });
+        });
+
+        // Duration picker handler
+        function setupDurationToggle(form) {
+            const radios = form.querySelectorAll('input[name="duration_type"]');
+            const daysInputDiv = form.querySelector('[id^="days-input-"]');
+            const dateInputDiv = form.querySelector('[id^="date-input-"]');
+            const endDateHidden = form.querySelector('input[name="enddate"]');
+
+            if (!radios.length) return;
+
+            function updateEndDate() {
+                const checkedRadio = form.querySelector('input[name="duration_type"]:checked');
+                if (checkedRadio.value === "days") {
+                    const daysInput = daysInputDiv.querySelector('input');
+                    const days = parseInt(daysInput.value || "365");
+                    const date = new Date();
+                    date.setDate(date.getDate() + days);
+                    endDateHidden.value = date.toISOString().replace(/[-:TZ.]/g, '').slice(0, 14) + 'Z';
+                } else {
+                    const dateInput = dateInputDiv.querySelector('input');
+                    if (dateInput.value) {
+                        const date = new Date(dateInput.value + 'T00:00:00Z');
+                        endDateHidden.value = date.toISOString().replace(/[-:TZ.]/g, '').slice(0, 14) + 'Z';
+                    }
+                }
+            }
+
+            radios.forEach(radio => {
+                radio.addEventListener('change', (e) => {
+                    if (e.target.value === "days") {
+                        daysInputDiv.classList.remove('hidden');
+                        dateInputDiv.classList.add('hidden');
+                    } else {
+                        daysInputDiv.classList.add('hidden');
+                        dateInputDiv.classList.remove('hidden');
+                    }
+                    updateEndDate();
+                });
+            });
+
+            daysInputDiv.querySelector('input')?.addEventListener('input', updateEndDate);
+            dateInputDiv.querySelector('input')?.addEventListener('change', updateEndDate);
+
+            updateEndDate();
+        }
+
+        // Setup duration pickers for all forms
+        document.querySelectorAll('.cert-form').forEach(form => {
+            setupDurationToggle(form);
+        });
+    </script>
+    <script src="/static/theme-toggle.js"></script>
+</body>
+</html>
+
+

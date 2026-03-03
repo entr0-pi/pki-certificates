@@ -1,0 +1,75 @@
+[ ca ]
+# `man ca`
+default_ca              = CA_default
+
+[ CA_default ]
+# Directory and file locations.
+dir                     = ${dir}
+new_certs_dir           = $dir/newcerts
+database                = $dir/database/index.txt
+serial                  = $dir/database/serial
+crlnumber               = $dir/database/crlnumber
+
+# CA validity (in days)
+default_days            = ${DEFAULT_DAYS}
+default_crl_days        = ${DEFAULT_CRL_DAYS}
+
+# Other parameters
+default_md              = ${DEFAULT_HASH_CA}
+email_in_dn             = no
+name_opt                = ca_default
+cert_opt                = ca_default
+preserve                = no
+policy                  = policy_inforce
+copy_extensions         = none
+
+x509_extensions         = cert_x509
+
+[ policy_inforce ]
+# See the POLICY FORMAT section of `man ca`.
+countryName             = ${POLICY_C}
+stateOrProvinceName     = ${POLICY_ST}
+localityName            = ${POLICY_L}
+organizationName        = ${POLICY_O}
+organizationalUnitName  = ${POLICY_OU}
+commonName              = ${POLICY_CN}
+emailAddress            = ${POLICY_EMAIL}
+
+#### SECTION FOR REQUESTING ####
+[ req ]
+# Standard Options for the `req` tool (`man req`).
+# For RSA only
+default_bits            = ${DEFAULT_RSA_KEY_BITS}
+default_md              = ${DEFAULT_HASH_REQ}
+
+distinguished_name      = req_distinguished_name
+string_mask             = utf8only
+prompt                  = no
+
+[ req_distinguished_name ]
+# Common parameters
+countryName             = ${countryName}
+stateOrProvinceName     = ${stateOrProvinceName}
+localityName            = ${localityName}
+organizationName        = ${organizationName}
+organizationalUnitName  = ${organizationalUnitName}
+commonName              = ${commonName}
+emailAddress            = ${emailAddress}
+
+#### SECTION FOR EXTENSIONS ####
+[ cert_x509 ]
+# Extensions Certificates (`man x509v3_config`).
+subjectKeyIdentifier    = hash
+authorityKeyIdentifier  = ${AUTHORITYKEYIDENTIFIER}
+basicConstraints        = ${BASICCONSTRAINTS}
+keyUsage                = ${KEYUSAGE}
+extendedKeyUsage        = ${EXTENDEDKEYUSAGE}
+# Only for server certificates.
+#authorityInfoAccess    = OCSP;URI:http://ocsp2.example.com
+# eg. subjectAltName = DNS:example.com,DNS:www.example.com,IP:127.0.0.1 
+subjectAltName		    = ${subjectAltName}
+
+[ crl_x509 ]
+# Extension for CRLs (`man x509v3_config`).
+authorityKeyIdentifier=keyid:always
+#crlDistributionPoints  = URI:http://pki.example.com/crl/ca.crl

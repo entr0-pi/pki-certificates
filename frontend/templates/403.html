@@ -1,0 +1,39 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Access Denied - PKI Manager</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://cdn.jsdelivr.net/npm/daisyui@latest/dist/full.min.css" rel="stylesheet" type="text/css" />
+</head>
+<body class="bg-gradient-to-br from-pink-100 via-purple-100 to-blue-100 min-h-screen flex items-center justify-center p-4">
+    <div class="max-w-md w-full">
+        <div class="card bg-base-100 shadow-xl">
+            <div class="card-body text-center">
+                <h1 class="text-5xl font-bold text-error mb-4">403</h1>
+                <h2 class="card-title justify-center mb-2">Access Denied</h2>
+                <p class="text-gray-600 mb-4">
+                    Your role <code class="bg-base-200 px-2 py-1 rounded">{{ role or 'unknown' }}</code>
+                    does not have permission to access this page.
+                </p>
+                <div class="divider"></div>
+                <p class="text-sm text-gray-500 mb-6">
+                    Please contact your administrator if you believe this is an error.
+                </p>
+                <div class="card-actions justify-center gap-2">
+                    <a href="/" class="btn btn-primary btn-sm">
+                        ← Back to Home
+                    </a>
+                    <a href="/auth/logout" class="btn btn-ghost btn-sm">
+                        Logout
+                    </a>
+                </div>
+            </div>
+        </div>
+    </div>
+    <script src="/static/theme-toggle.js"></script>
+</body>
+</html>
+
+

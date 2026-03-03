@@ -1,0 +1,116 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="cupcake">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Certificate {{ certificate.cert_name }} - Details</title>
+    <link href="https://cdn.jsdelivr.net/npm/daisyui@4.6.0/dist/full.min.css" rel="stylesheet" type="text/css" />
+    <script src="https://cdn.tailwindcss.com"></script>
+</head>
+<body class="bg-base-200 min-h-screen p-4">
+    <div class="max-w-6xl mx-auto space-y-4">
+        <div class="card bg-base-100 shadow">
+            <div class="card-body">
+                <div class="flex items-center justify-between">
+                    <div>
+                        <h1 class="text-2xl font-semibold">{{ certificate.cert_name }}</h1>
+                        <p class="text-sm text-base-content/70">Organization: {{ organization.name }} | Type: {{ certificate.cert_type }}</p>
+                    </div>
+                    <div class="flex items-center gap-2">
+                        <div class="dropdown dropdown-end">
+                            <div tabindex="0" role="button" class="btn btn-sm btn-outline">Download</div>
+                            <ul tabindex="0" class="dropdown-content menu bg-base-100 rounded-box z-[1] w-56 p-2 shadow border border-base-300">
+                                <li><a href="/organizations/{{ organization.id }}/certificates/{{ certificate.id }}/download?format=pem">PEM Certificate</a></li>
+                                <li><a href="/organizations/{{ organization.id }}/certificates/{{ certificate.id }}/download?format=p12">PKCS12 Bundle</a></li>
+                                <li><a href="/organizations/{{ organization.id }}/certificates/{{ certificate.id }}/download?format=chain">Full Chain</a></li>
+                            </ul>
+                        </div>
+                        <button class="btn btn-sm" onclick="window.close()">Close</button>
+                    </div>
+                </div>
+                <div class="grid grid-cols-2 md:grid-cols-4 gap-3 text-sm mt-3">
+                    <div><span class="font-semibold">ID:</span> {{ certificate.id }}</div>
+                    <div><span class="font-semibold">Status:</span> {{ certificate.status }}</div>
+                    <div><span class="font-semibold">Type:</span> {{ certificate.cert_type }}</div>
+                    <div><span class="font-semibold">Issuer:</span> {% if issuer_cert %}{{ issuer_cert.cert_name }} (ID: {{ certificate.issuer_cert_id }}){% else %}{{ certificate.issuer_cert_id or "-" }}{% endif %}</div>
+                </div>
+
+                <div class="divider my-2"></div>
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-2 text-sm">
+                    {% if certificate.serial_number %}<div><span class="font-semibold">Serial:</span> {{ certificate.serial_number }}</div>{% endif %}
+                    {% if certificate.subject_common_name %}<div><span class="font-semibold">CN:</span> {{ certificate.subject_common_name }}</div>{% endif %}
+                    {% if certificate.subject_country %}<div><span class="font-semibold">Country (C):</span> {{ certificate.subject_country }}</div>{% endif %}
+                    {% if certificate.subject_state %}<div><span class="font-semibold">State (ST):</span> {{ certificate.subject_state }}</div>{% endif %}
+                    {% if certificate.subject_locality %}<div><span class="font-semibold">Locality (L):</span> {{ certificate.subject_locality }}</div>{% endif %}
+                    {% if certificate.subject_organization %}<div><span class="font-semibold">Organization (O):</span> {{ certificate.subject_organization }}</div>{% endif %}
+                    {% if certificate.subject_org_unit %}<div><span class="font-semibold">Org Unit (OU):</span> {{ certificate.subject_org_unit }}</div>{% endif %}
+                    {% if certificate.subject_email %}<div><span class="font-semibold">Email:</span> {{ certificate.subject_email }}</div>{% endif %}
+                    {% if san_str and san_str != "-" %}<div class="md:col-span-2"><span class="font-semibold">SAN:</span> {{ san_str }}</div>{% endif %}
+                    {% if certificate.not_before %}<div><span class="font-semibold">Valid From:</span> {{ certificate.not_before }}</div>{% endif %}
+                    {% if certificate.not_after %}<div><span class="font-semibold">Valid To:</span> {{ certificate.not_after }}</div>{% endif %}
+                    {% if certificate.key_algorithm %}<div><span class="font-semibold">Key Algorithm:</span> {{ certificate.key_algorithm }}</div>{% endif %}
+                    {% if certificate.ec_curve %}<div><span class="font-semibold">EC Curve:</span> {{ certificate.ec_curve }}</div>{% endif %}
+                    {% if certificate.signature_hash %}<div><span class="font-semibold">Signature Hash:</span> {{ certificate.signature_hash }}</div>{% endif %}
+                </div>
+            </div>
+        </div>
+
+        <div class="card bg-base-100 shadow">
+            <div class="card-body">
+                <h2 class="card-title text-base">Extensions</h2>
+
+                <div class="space-y-4 text-sm">
+                    <div>
+                        <div class="font-semibold mb-1">Basic Constraints</div>
+                        {% if basic_constraints %}
+                        <div>
+                            <span class="badge badge-outline">CA: {{ "true" if basic_constraints.is_ca else "false" }}</span>
+                            {% if basic_constraints.is_ca and basic_constraints.path_length is not none %}
+                            <span class="badge badge-outline">path_length: {{ basic_constraints.path_length }}</span>
+                            {% endif %}
+                        </div>
+                        {% else %}
+                        <div class="text-base-content/60">-</div>
+                        {% endif %}
+                    </div>
+
+                    <div>
+                        <div class="font-semibold mb-1">Key Usage</div>
+                        {% if key_usage %}
+                        <div class="flex flex-wrap gap-2">
+                            {% if key_usage.digital_signature %}<span class="badge">Digital Signature</span>{% endif %}
+                            {% if key_usage.content_commitment %}<span class="badge">Content Commitment</span>{% endif %}
+                            {% if key_usage.key_encipherment %}<span class="badge">Key Encipherment</span>{% endif %}
+                            {% if key_usage.data_encipherment %}<span class="badge">Data Encipherment</span>{% endif %}
+                            {% if key_usage.key_agreement %}<span class="badge">Key Agreement</span>{% endif %}
+                            {% if key_usage.key_cert_sign %}<span class="badge">Key Cert Sign</span>{% endif %}
+                            {% if key_usage.crl_sign %}<span class="badge">CRL Sign</span>{% endif %}
+                            {% if key_usage.encipher_only %}<span class="badge">Encipher Only</span>{% endif %}
+                            {% if key_usage.decipher_only %}<span class="badge">Decipher Only</span>{% endif %}
+                        </div>
+                        {% else %}
+                        <div class="text-base-content/60">-</div>
+                        {% endif %}
+                    </div>
+
+                    <div>
+                        <div class="font-semibold mb-1">Extended Key Usage</div>
+                        {% if extended_key_usages %}
+                        <div class="flex flex-wrap gap-2">
+                            {% for eku in extended_key_usages %}
+                            <span class="badge badge-outline">{{ eku.eku_name }}</span>
+                            {% endfor %}
+                        </div>
+                        {% else %}
+                        <div class="text-base-content/60">-</div>
+                        {% endif %}
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    <script src="/static/theme-toggle.js"></script>
+</body>
+</html>
+
+

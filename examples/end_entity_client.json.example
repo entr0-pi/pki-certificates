@@ -1,0 +1,19 @@
+{
+  "org_dir": "org_demo_9f3",
+  "cert_name": "user-lina-park",
+  "artifact_name": "5f9c012d-2fb3-43df-86a5-ec856d0f7f6d",
+  "cert_type": "client",
+  "C": "US",
+  "ST": "Virginia",
+  "L": "Ashburn",
+  "O": "Nimbus Labs",
+  "OU": "Engineering",
+  "CN": "Lina Park",
+  "email": "lina.park@nimbus-labs.example",
+  "subjectAltName": "EMAIL:lina.park@nimbus-labs.example",
+  "issuer_name": "edge_issuing_ca_01",
+  "issuer_artifact_name": "c4d2b9c1-9a0f-4f74-a4af-cd9e4d1439d2",
+  "issuer_type": "intermediate",
+  "eccurve": "secp256r1",
+  "enddate": "20271231235959Z"
+}

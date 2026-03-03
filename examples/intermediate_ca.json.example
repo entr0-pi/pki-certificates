@@ -1,0 +1,18 @@
+{
+  "org_dir": "org_demo_9f3",
+  "cert_name": "edge_issuing_ca_01",
+  "artifact_name": "c4d2b9c1-9a0f-4f74-a4af-cd9e4d1439d2",
+  "cert_type": "intermediate",
+  "C": "US",
+  "ST": "Virginia",
+  "L": "Ashburn",
+  "O": "Nimbus Labs",
+  "OU": "Issuing CA",
+  "CN": "Nimbus Labs Edge Issuing CA 01",
+  "email": "ca-ops@nimbus-labs.example",
+  "issuer_name": "root_anchor_9f3",
+  "issuer_artifact_name": "a73f6f9d-57c2-4a85-9d7d-5e65bda88f11",
+  "eccurve": "secp384r1",
+  "enddate": "20301231235959Z",
+  "subjectAltName": ""
+}

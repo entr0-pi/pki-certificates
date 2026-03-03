@@ -1,0 +1,19 @@
+{
+  "org_dir": "org_demo_9f3",
+  "cert_name": "api-gateway-prod-01",
+  "artifact_name": "6d5dc95f-5669-4698-89a8-d68ad6e5c6cf",
+  "cert_type": "server",
+  "C": "US",
+  "ST": "Virginia",
+  "L": "Ashburn",
+  "O": "Nimbus Labs",
+  "OU": "Platform Engineering",
+  "CN": "api.nimbus-labs.example",
+  "email": "",
+  "subjectAltName": "DNS:api.nimbus-labs.example,DNS:api-internal.nimbus-labs.example,DNS:*.svc.nimbus-labs.example",
+  "issuer_name": "edge_issuing_ca_01",
+  "issuer_artifact_name": "c4d2b9c1-9a0f-4f74-a4af-cd9e4d1439d2",
+  "issuer_type": "intermediate",
+  "eccurve": "secp256r1",
+  "enddate": "20271231235959Z"
+}

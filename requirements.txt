@@ -1,0 +1,15 @@
+# FastAPI and web framework dependencies
+fastapi==0.128
+uvicorn[standard]==0.40.0
+jinja2==3.1.3
+python-multipart==0.0.22
+
+# Database
+sqlalchemy==2.0.34
+
+# PKI cryptography (pinned version for security-critical operations)
+cryptography==46.0.5
+
+# Environment variables and encryption
+python-dotenv==1.2.1
+PyJWT==2.10.1

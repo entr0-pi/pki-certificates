@@ -1,0 +1,468 @@
+{% import "partials/shared_macros.html" as ui %}
+<!DOCTYPE html>
+<html data-theme="cupcake">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{{ organization.name }} - PKI Dashboard</title>
+    <link href="https://cdn.jsdelivr.net/npm/daisyui@4.6.0/dist/full.min.css" rel="stylesheet" type="text/css" />
+    <script src="https://cdn.tailwindcss.com"></script>
+</head>
+<body class="bg-base-200 min-h-screen p-4 md:p-6">
+    {% set perms = ui_permissions if ui_permissions is defined else {} %}
+    <div class="container mx-auto max-w-7xl">
+        {{ ui.breadcrumb([
+            {"label": "Home", "href": "/"},
+            {"label": organization.name, "href": None}
+        ]) }}
+
+        <div class="card bg-base-100 shadow-xl mb-6">
+            <div class="card-body">
+                <div class="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4">
+                    <div>
+                        <h1 class="text-3xl font-semibold">{{ organization.name }}</h1>
+                        <p class="text-sm text-base-content/70">
+                            Organization #{{ organization.id }} · Created {{ organization.created_at[:10] }}
+                        </p>
+                        <div class="mt-2">
+                            <span class="badge {% if root_ca_exists %}badge-success{% else %}badge-warning{% endif %}">
+                                {% if root_ca_exists %}PKI Active{% else %}Pending Root CA{% endif %}
+                            </span>
+                            <span class="badge badge-outline">Role: {{ role if role is defined else "user" }}</span>
+                        </div>
+                    </div>
+                    <div class="flex flex-col sm:items-end gap-2 w-full lg:w-auto">
+                        <div class="join">
+                            {% if perms.get("can_create_unified", False) %}
+                            <a href="/organizations/{{ organization.id }}/create-certificate" class="btn btn-primary btn-sm join-item">
+                                Create Certificate
+                            </a>
+                            {% endif %}
+                            <div class="dropdown dropdown-end">
+                                <button tabindex="0" class="btn btn-outline btn-sm join-item">
+                                    CRL Downloads
+                                </button>
+                                <ul tabindex="0" class="dropdown-content menu bg-base-100 rounded-box z-[1] w-52 p-2 shadow border border-base-300">
+                                    <li><a href="/organizations/{{ organization.id }}/crl/download">Latest CRL</a></li>
+                                    <li><a href="/organizations/{{ organization.id }}/crl/bundle">CRL Bundle</a></li>
+                                </ul>
+                            </div>
+                            <a href="/organizations/{{ organization.id }}/manage" class="btn btn-ghost btn-sm join-item">
+                                Refresh
+                            </a>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        {% if not root_ca_exists %}
+            {{ ui.alert("warning", "No Root CA Created", "Create a Root CA before issuing intermediate or end-entity certificates.") }}
+        {% endif %}
+
+        <div class="grid grid-cols-2 md:grid-cols-5 gap-3 mb-6">
+            <div class="stat bg-base-100 shadow rounded-box"><div class="stat-title">Total</div><div class="stat-value text-3xl">{{ stats.total_certificates or 0 }}</div></div>
+            <div class="stat bg-base-100 shadow rounded-box"><div class="stat-title">Active</div><div class="stat-value text-3xl text-success">{{ stats.status_counts.get('active', 0) }}</div></div>
+            <div class="stat bg-base-100 shadow rounded-box"><div class="stat-title">Revoked</div><div class="stat-value text-3xl text-error">{{ stats.status_counts.get('revoked', 0) }}</div></div>
+            <div class="stat bg-base-100 shadow rounded-box"><div class="stat-title">Expired</div><div class="stat-value text-3xl text-warning">{{ stats.status_counts.get('expired', 0) }}</div></div>
+            <div class="stat bg-base-100 shadow rounded-box"><div class="stat-title">End-Entity</div><div class="stat-value text-3xl">{{ stats.certificate_counts.get('server', 0) + stats.certificate_counts.get('client', 0) + stats.certificate_counts.get('email', 0) }}</div></div>
+        </div>
+
+        <div class="card bg-base-100 shadow-xl mb-6">
+            <div class="card-body">
+                <div class="grid grid-cols-1 lg:grid-cols-5 gap-3">
+                    <label class="form-control lg:col-span-2">
+                        <span class="label-text text-xs text-base-content/60">Search</span>
+                        <input id="certSearch" type="text" class="input input-bordered input-sm" placeholder="Name, CN, serial, reason..." />
+                    </label>
+                    <label class="form-control">
+                        <span class="label-text text-xs text-base-content/60">Type</span>
+                        <select id="typeFilter" class="select select-bordered select-sm">
+                            <option value="">All</option>
+                            <option value="root">Root</option>
+                            <option value="intermediate">Intermediate</option>
+                            <option value="server">Server</option>
+                            <option value="client">Client</option>
+                            <option value="email">Email</option>
+                        </select>
+                    </label>
+                    <label class="form-control">
+                        <span class="label-text text-xs text-base-content/60">Status</span>
+                        <select id="statusFilter" class="select select-bordered select-sm">
+                            <option value="">All</option>
+                            <option value="active" selected>Active</option>
+                            <option value="revoked">Revoked</option>
+                            <option value="expired">Expired</option>
+                        </select>
+                    </label>
+                    <label class="form-control">
+                        <span class="label-text text-xs text-base-content/60">Expiry Window</span>
+                        <select id="expiryFilter" class="select select-bordered select-sm">
+                            <option value="">All</option>
+                            <option value="critical">0-30d</option>
+                            <option value="warning">31-90d</option>
+                            <option value="healthy">90d+</option>
+                            <option value="expired">Expired</option>
+                        </select>
+                    </label>
+                </div>
+            </div>
+        </div>
+
+        <div class="card bg-base-100 shadow-xl">
+            <div class="card-body">
+                {% if certificates %}
+                <div class="overflow-x-auto max-h-72 overflow-y-auto">
+                    <table class="table table-zebra table-pin-rows">
+                        <thead>
+                            <tr>
+                                <th>Name</th>
+                                <th>Type</th>
+                                <th>Created</th>
+                                <th>Status</th>
+                                <th>CN</th>
+                                <th>Expires</th>
+                                <th>Actions</th>
+                            </tr>
+                        </thead>
+                        <tbody id="certTableBody">
+                            {% for cert in certificates %}
+                            <tr
+                                class="cert-row"
+                                data-name="{{ cert.cert_name|lower }}"
+                                data-cn="{{ (cert.subject_common_name or '')|lower }}"
+                                data-serial="{{ (cert.serial_number or '')|lower }}"
+                                data-reason="{{ (cert.revocation_reason or '')|lower }}"
+                                data-type="{{ cert.cert_type }}"
+                                data-status="{{ cert.status }}"
+                                data-not-after="{{ cert.not_after or '' }}"
+                            >
+                                <td class="font-semibold">
+                                    {% if perms.get("can_view_popup", True) %}
+                                    <a href="/organizations/{{ organization.id }}/certificates/{{ cert.id }}/popup"
+                                       class="link link-primary"
+                                       onclick="window.open(this.href, 'certPopup{{ cert.id }}', 'width=1200,height=900,scrollbars=yes,resizable=yes'); return false;">
+                                        {{ cert.cert_name }}
+                                    </a>
+                                    {% else %}
+                                    {{ cert.cert_name }}
+                                    {% endif %}
+                                </td>
+                                <td><span class="badge badge-outline">{{ cert.cert_type }}</span></td>
+                                <td class="text-xs">{{ cert.created_at[:10] if cert.created_at else "-" }}</td>
+                                <td>
+                                    <span class="badge {% if cert.status == 'active' %}badge-success{% elif cert.status == 'revoked' %}badge-error{% else %}badge-warning{% endif %}">
+                                        {{ cert.status }}
+                                    </span>
+                                </td>
+                                <td class="font-mono text-xs">{{ cert.subject_common_name or "-" }}</td>
+                                <td class="text-xs">
+                                    <div class="flex flex-col gap-1">
+                                        <span>{{ cert.not_after[:10] if cert.not_after else "-" }}</span>
+                                        <span class="expiry-badge badge badge-sm badge-ghost">-</span>
+                                    </div>
+                                </td>
+                                <td>
+                                    <div class="dropdown dropdown-end">
+                                        <div tabindex="0" role="button" class="btn btn-xs btn-outline">Actions</div>
+                                        <ul tabindex="0" class="dropdown-content menu bg-base-100 rounded-box z-[1] w-52 p-2 shadow border border-base-300">
+                                            {% if perms.get("can_view_popup", True) %}
+                                            <li><a href="/organizations/{{ organization.id }}/certificates/{{ cert.id }}/popup" onclick="window.open(this.href, 'certPopup{{ cert.id }}', 'width=1200,height=900,scrollbars=yes,resizable=yes'); return false;">View Details</a></li>
+                                            {% endif %}
+                                            {% if perms.get("can_download_cert", False) %}
+                                            <li><a href="/organizations/{{ organization.id }}/certificates/{{ cert.id }}/download?format=pem">Download PEM</a></li>
+                                            {% if cert.cert_type in ["client", "email"] %}
+                                            <li><a href="/organizations/{{ organization.id }}/certificates/{{ cert.id }}/download?format=p12">Download PKCS12</a></li>
+                                            {% endif %}
+                                            {% endif %}
+                                            {% if perms.get("can_download_cert", False) %}
+                                            <li><a href="/organizations/{{ organization.id }}/certificates/{{ cert.id }}/download?format=chain">Download Chain</a></li>
+                                            {% endif %}
+                                            {% if perms.get("can_download_private_key", False) and cert.cert_type == "server" %}
+                                            <li><a href="/organizations/{{ organization.id }}/certificates/{{ cert.id }}/private-key/plain">Download Private Key</a></li>
+                                            {% endif %}
+                                            {% if perms.get("can_renew", False) and cert.status == "active" %}
+                                            <li><a href="/organizations/{{ organization.id }}/certificates/{{ cert.id }}/renew">Renew</a></li>
+                                            {% endif %}
+                                            {% if perms.get("can_revoke", False) and cert.status == "active" %}
+                                            <li><a href="#" onclick="openRevokeModal({{ cert.id }}, '{{ cert.cert_name }}'); return false;" class="text-error">Revoke</a></li>
+                                            {% endif %}
+                                        </ul>
+                                    </div>
+                                </td>
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+                <p id="noResultsMessage" class="text-sm text-base-content/70 mt-3 hidden">No certificates match current filters.</p>
+                {% else %}
+                <p class="text-base-content/70 italic">No certificates created yet.</p>
+                {% endif %}
+            </div>
+        </div>
+
+        <div class="card bg-base-100 shadow-xl mt-6">
+            <div class="card-body">
+                <h2 class="card-title">Recent Operations</h2>
+                {% if audit_logs %}
+                <div class="overflow-x-auto max-h-72 overflow-y-auto">
+                    <table class="table table-zebra">
+                        <thead><tr><th>Certificate</th><th>Operation</th><th>User</th><th>Date</th><th>Details</th></tr></thead>
+                        <tbody>
+                            {% for log in audit_logs %}
+                            <tr>
+                                <td>{{ log.cert_name }}</td>
+                                <td class="capitalize">{{ log.operation }}</td>
+                                <td>{{ log.user_name or "-" }}</td>
+                                <td class="text-xs">{{ log.created_at }}</td>
+                                <td class="text-xs">{{ log.details or "-" }}</td>
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+                {% else %}
+                <p class="text-base-content/70 italic">No audit events yet.</p>
+                {% endif %}
+            </div>
+        </div>
+
+        {% if perms.get("can_run_consistency", False) %}
+        <div class="text-center mt-6">
+            <button type="button" class="btn btn-outline" onclick="runConsistencyCheck()">
+                Run Consistency Check
+            </button>
+        </div>
+        {% endif %}
+    </div>
+
+    <dialog id="revokeModal" class="modal">
+        <div class="modal-box w-full max-w-md">
+            <h3 class="font-semibold text-lg mb-4">Revoke Certificate</h3>
+            <form id="revokeForm" method="POST" class="space-y-4">
+                <div class="form-control">
+                    <label class="label"><span class="label-text text-sm">Certificate</span></label>
+                    <input id="certNameDisplay" class="input input-bordered bg-base-200 w-full" disabled />
+                </div>
+                <div class="form-control">
+                    <label class="label"><span class="label-text text-sm">Reason</span></label>
+                    <select name="reason" class="select select-bordered w-full" required>
+                        <option value="unspecified">Unspecified</option>
+                        <option value="keyCompromise">Key Compromise</option>
+                        <option value="caCompromise">CA Compromise</option>
+                        <option value="affiliationChanged">Affiliation Changed</option>
+                        <option value="superseded">Superseded</option>
+                        <option value="cessationOfOperation">Cessation of Operation</option>
+                        <option value="certificateHold">Certificate Hold</option>
+                        <option value="removeFromCRL">Remove from CRL</option>
+                        <option value="privilegeWithdrawn">Privilege Withdrawn</option>
+                        <option value="aACompromise">AA Compromise</option>
+                    </select>
+                </div>
+                <div class="modal-action">
+                    <button type="button" class="btn btn-ghost" onclick="revokeModal.close()">Cancel</button>
+                    <button type="submit" class="btn btn-error">Revoke</button>
+                </div>
+            </form>
+        </div>
+        <form method="dialog" class="modal-backdrop"><button>close</button></form>
+    </dialog>
+
+    <dialog id="consistencyModal" class="modal">
+        <div class="modal-box max-w-2xl max-h-96 overflow-y-auto">
+            <h3 class="font-semibold text-lg mb-3">Consistency Check</h3>
+            <div id="consistencyBody" class="text-sm">Running...</div>
+            <div class="modal-action"><button class="btn" onclick="consistencyModal.close()">Close</button></div>
+        </div>
+        <form method="dialog" class="modal-backdrop"><button>close</button></form>
+    </dialog>
+
+    <script>
+        const revokeModal = document.getElementById("revokeModal");
+        const revokeForm = document.getElementById("revokeForm");
+        function openRevokeModal(certId, certName) {
+            document.getElementById("certNameDisplay").value = certName;
+            revokeForm.action = `/organizations/{{ organization.id }}/certificates/${certId}/revoke`;
+            revokeModal.showModal();
+        }
+
+        async function runConsistencyCheck() {
+            const modal = document.getElementById("consistencyModal");
+            const body = document.getElementById("consistencyBody");
+            modal.showModal();
+            body.innerHTML = '<div class="flex justify-center items-center py-8"><span class="loading loading-spinner loading-lg"></span></div>';
+
+            try {
+                const response = await fetch("/api/check-consistency");
+                const data = await response.json();
+
+                let html = "";
+
+                if (data.success) {
+                    html += '<div role="alert" class="alert alert-success mb-4">';
+                    html += '<svg xmlns="http://www.w3.org/2000/svg" class="stroke-current shrink-0 h-6 w-6" fill="none" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>';
+                    html += '<div><h3 class="font-semibold">All consistency checks passed ✅</h3></div></div>';
+                } else {
+                    html += '<div role="alert" class="alert alert-error mb-4">';
+                    html += '<svg xmlns="http://www.w3.org/2000/svg" class="stroke-current shrink-0 h-6 w-6" fill="none" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 14l-2-2m0 0l-2-2m2 2l2-2m-2 2l-2 2m0 0l2 2m-2-2l-2 2"></path></svg>';
+                    html += '<div><h3 class="font-semibold">Inconsistencies found</h3>';
+                    if (data.error) html += `<p class="text-sm">${data.error}</p>`;
+                    html += "</div></div>";
+                }
+
+                if (data.stats) {
+                    const stats = data.stats;
+                    const tests = [
+                        ["Certificate file exists", stats.missing_files],
+                        ["Subject fields match DB", stats.subject_mismatches],
+                        ["Issuer linkage consistency", stats.issuer_link_mismatches],
+                        ["Serial format validity", stats.serial_format_issues],
+                        ["Serial uniqueness (global)", stats.serial_duplicates_global],
+                        ["Serial uniqueness (per org)", stats.serial_duplicates_per_org],
+                        ["Validity dates match DB", stats.validity_mismatches],
+                        ["Validity ranges are valid", stats.invalid_validity_ranges],
+                        ["Type-policy consistency", stats.type_policy_mismatches],
+                        ["Artifact path integrity", stats.artifact_path_mismatches],
+                        ["Private key matches cert", stats.key_cert_mismatches],
+                        ["Private key loadability", stats.key_load_failures],
+                        ["CSR consistency", stats.csr_mismatches],
+                        ["CRL file presence", stats.crl_mismatches],
+                        ["CRL semantic consistency", stats.crl_semantic_mismatches],
+                        ["No orphaned records", stats.orphaned_records],
+                        ["Status-state consistency", stats.status_state_mismatches],
+                        ["Encryption/naming policy", stats.encryption_naming_mismatches],
+                        ["Hash integrity baseline", stats.hash_mismatches]
+                    ];
+
+                    html += '<div class="mb-4"><h4 class="font-semibold text-sm mb-2">Test Results</h4>';
+                    html += '<div class="space-y-2 text-sm">';
+
+                    tests.forEach(([label, failures]) => {
+                        const fail = Number(failures || 0) > 0;
+                        const badgeClass = fail ? "badge-error" : "badge-success";
+                        const statusText = fail ? `FAIL (${failures})` : "OK";
+                        const icon = fail
+                            ? '<svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4 text-error" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/></svg>'
+                            : '<svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4 text-success" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"/></svg>';
+
+                        html += `
+                            <div class="flex items-center justify-between bg-base-200 rounded-box p-2">
+                                <div class="flex items-center gap-2">
+                                    ${icon}
+                                    <span>${label}</span>
+                                </div>
+                                <span class="badge ${badgeClass} badge-sm">${statusText}</span>
+                            </div>
+                        `;
+                    });
+
+                    html += `
+                        <div class="mt-3 text-xs text-base-content/70">
+                            Checked certificates: ${stats.checked_certs || 0} / ${stats.total_certs || 0}<br>
+                            Hash tracked files: ${stats.hash_tracked_files || 0}, new baseline entries: ${stats.hash_new_entries || 0}<br>
+                            Warnings: ${stats.warnings || 0}
+                        </div>
+                    `;
+
+                    html += "</div></div>";
+                }
+
+                if (data.issues && data.issues.length > 0) {
+                    html += `<div><h4 class="font-semibold text-sm mb-2">Issues Found (${data.issue_count})</h4>`;
+                    html += '<div class="space-y-2 text-sm max-h-64 overflow-y-auto">';
+
+                    data.issues.forEach((issue) => {
+                        const bgClass = issue.level === "error" ? "bg-error/10 border-error" : "bg-warning/10 border-warning";
+                        const badgeClass = issue.level === "error" ? "badge-error" : "badge-warning";
+                        html += `<div class="card ${bgClass} border p-3">`;
+                        html += `<div class="badge ${badgeClass} badge-sm">${issue.level.toUpperCase()}</div>`;
+                        html += `<p class="text-xs mt-2">${issue.message}</p>`;
+                        html += "</div>";
+                    });
+
+                    html += "</div></div>";
+                } else if (!data.success && data.error) {
+                    html += '<div class="text-sm text-base-content/70">No issues details available.</div>';
+                } else {
+                    html += '<div class="text-sm text-success">No issues found. Database and PEM files are consistent.</div>';
+                }
+
+                body.innerHTML = html;
+            } catch (error) {
+                body.innerHTML = `
+                    <div role="alert" class="alert alert-error">
+                        <svg xmlns="http://www.w3.org/2000/svg" class="stroke-current shrink-0 h-6 w-6" fill="none" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 14l-2-2m0 0l-2-2m2 2l2-2m-2 2l-2 2m0 0l2 2m-2-2l-2 2"></path></svg>
+                        <div>
+                            <h3 class="font-semibold">Error running consistency check</h3>
+                            <p class="text-sm">${error.message}</p>
+                        </div>
+                    </div>
+                `;
+            }
+        }
+
+        const rows = Array.from(document.querySelectorAll(".cert-row"));
+        const q = document.getElementById("certSearch");
+        const type = document.getElementById("typeFilter");
+        const status = document.getElementById("statusFilter");
+        const expiry = document.getElementById("expiryFilter");
+        const noResults = document.getElementById("noResultsMessage");
+
+        function expiryBucket(notAfter) {
+            if (!notAfter) return "";
+            const end = new Date(notAfter);
+            if (Number.isNaN(end.getTime())) return "";
+            const days = Math.ceil((end - new Date()) / 86400000);
+            if (days <= 0) return "expired";
+            if (days <= 30) return "critical";
+            if (days <= 90) return "warning";
+            return "healthy";
+        }
+
+        function renderExpiryBadges() {
+            rows.forEach((row) => {
+                const bucket = expiryBucket(row.dataset.notAfter || "");
+                const badge = row.querySelector(".expiry-badge");
+                if (!badge) return;
+                if (!bucket) {
+                    badge.textContent = "-";
+                    badge.className = "expiry-badge badge badge-sm badge-ghost";
+                    return;
+                }
+                if (bucket === "expired") badge.className = "expiry-badge badge badge-sm badge-error";
+                else if (bucket === "critical") badge.className = "expiry-badge badge badge-sm badge-error";
+                else if (bucket === "warning") badge.className = "expiry-badge badge badge-sm badge-warning";
+                else badge.className = "expiry-badge badge badge-sm badge-success";
+                badge.textContent = bucket;
+            });
+        }
+
+        function applyFilters() {
+            const query = (q?.value || "").trim().toLowerCase();
+            const t = type?.value || "";
+            const s = status?.value || "";
+            const e = expiry?.value || "";
+            let visible = 0;
+            rows.forEach((row) => {
+                const haystack = [row.dataset.name, row.dataset.cn, row.dataset.serial, row.dataset.reason].join(" ");
+                const matchesQuery = !query || haystack.includes(query);
+                const matchesType = !t || row.dataset.type === t;
+                const matchesStatus = !s || row.dataset.status === s;
+                const matchesExpiry = !e || expiryBucket(row.dataset.notAfter || "") === e;
+                const show = matchesQuery && matchesType && matchesStatus && matchesExpiry;
+                row.classList.toggle("hidden", !show);
+                if (show) visible += 1;
+            });
+            if (noResults) noResults.classList.toggle("hidden", visible !== 0);
+        }
+
+        [q, type, status, expiry].forEach((el) => el && el.addEventListener("input", applyFilters));
+        renderExpiryBadges();
+        applyFilters();
+    </script>
+    <script src="/static/theme-toggle.js"></script>
+</body>
+</html>
+
+

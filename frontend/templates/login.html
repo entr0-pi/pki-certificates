@@ -1,0 +1,58 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="cupcake">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Login - PKI Management</title>
+    <link href="https://cdn.jsdelivr.net/npm/daisyui@4.6.0/dist/full.min.css" rel="stylesheet" type="text/css" />
+    <script src="https://cdn.tailwindcss.com"></script>
+</head>
+<body class="bg-base-200 min-h-screen flex items-center justify-center p-6">
+    <div class="card bg-base-100 shadow-2xl w-full max-w-md">
+        <div class="card-body">
+            <h1 class="text-2xl font-semibold">PKI Login</h1>
+            <p class="text-sm text-base-content/70">Enter API key to start a session.</p>
+
+            {% if error %}
+            <div role="alert" class="alert alert-error mt-2">
+                <span>{{ error }}</span>
+            </div>
+            {% endif %}
+
+            {% if is_authenticated %}
+            <div role="alert" class="alert alert-success mt-2">
+                <span>You are already connected.</span>
+            </div>
+            <div class="flex gap-2 mt-2">
+                <a href="/" class="btn btn-primary flex-1">Go to App</a>
+                <form action="/auth/logout" method="post" class="flex-1">
+                    <button type="submit" class="btn btn-error">Logout</button>
+                </form>
+            </div>
+            {% else %}
+            <form action="/auth/session" method="post" class="space-y-4 mt-2">
+                <div class="form-control">
+                    <label class="label">
+                        <span class="label-text font-semibold">API Key</span>
+                    </label>
+                    <input
+                        type="password"
+                        name="api_key"
+                        class="input input-bordered"
+                        placeholder="Enter API key"
+                        required
+                        autocomplete="off"
+                    />
+                </div>
+                <div class="form-control">
+                    <button type="submit" class="btn btn-primary">Start Session</button>
+                </div>
+            </form>
+            {% endif %}
+        </div>
+    </div>
+    <script src="/static/theme-toggle.js"></script>
+</body>
+</html>
+
+

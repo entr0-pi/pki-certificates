@@ -1,0 +1,143 @@
+{
+  "role_defaults": {
+    "root": {
+      "ec_curve": "secp384r1",
+      "key_encryption_cipher": "aes256",
+      "DEFAULT_HASH_CA": "sha256",
+      "DEFAULT_HASH_REQ": "sha256",
+      "DEFAULT_DAYS": "7300",
+      "DEFAULT_CRL_DAYS": "3650",
+      "DEFAULT_RSA_KEY_BITS": "4096",
+      "KEYUSAGE": "critical, keyCertSign, cRLSign",
+      "BASICCONSTRAINTS": "critical, CA:true, pathlen:1",
+      "AUTHORITYKEYIDENTIFIER": "keyid:always",
+      "EXTENDEDKEYUSAGE": "",
+      "CRL_URL": "{PKI_BASE_URL}/organizations/{org_id}/crl/{issuer_name}",
+      "POLICY_C": "match",
+      "POLICY_ST": "match",
+      "POLICY_L": "match",
+      "POLICY_O": "match",
+      "POLICY_OU": "match",
+      "POLICY_CN": "supplied",
+      "POLICY_EMAIL": "optional"
+    },
+    "intermediate": {
+      "ec_curve": "secp384r1",
+      "key_encryption_cipher": "aes256",
+      "DEFAULT_HASH_CA": "sha256",
+      "DEFAULT_HASH_REQ": "sha256",
+      "DEFAULT_DAYS": "7300",
+      "DEFAULT_CRL_DAYS": "3650",
+      "DEFAULT_RSA_KEY_BITS": "4096",
+      "KEYUSAGE": "critical, keyCertSign, cRLSign, digitalSignature",
+      "BASICCONSTRAINTS": "critical, CA:true, pathlen:0",
+      "AUTHORITYKEYIDENTIFIER": "keyid:always,issuer",
+      "EXTENDEDKEYUSAGE": "",
+      "CRL_URL": "{PKI_BASE_URL}/organizations/{org_id}/crl/{issuer_name}",
+      "POLICY_C": "match",
+      "POLICY_ST": "match",
+      "POLICY_L": "match",
+      "POLICY_O": "match",
+      "POLICY_OU": "supplied",
+      "POLICY_CN": "supplied",
+      "POLICY_EMAIL": "optional"
+    },
+    "end-entity-server": {
+      "ec_curve": "secp256r1",
+      "key_encryption_cipher": "aes256",
+      "DEFAULT_HASH_CA": "sha256",
+      "DEFAULT_HASH_REQ": "sha256",
+      "DEFAULT_DAYS": "825",
+      "DEFAULT_RSA_KEY_BITS": "2048",
+      "KEYUSAGE": "critical, digitalSignature",
+      "BASICCONSTRAINTS": "CA:FALSE",
+      "AUTHORITYKEYIDENTIFIER": "keyid,issuer:always",
+      "EXTENDEDKEYUSAGE": "serverAuth",
+      "CRL_URL": "{PKI_BASE_URL}/organizations/{org_id}/crl/{issuer_name}"
+    },
+    "end-entity-client": {
+      "ec_curve": "secp256r1",
+      "key_encryption_cipher": "aes256",
+      "DEFAULT_HASH_CA": "sha256",
+      "DEFAULT_HASH_REQ": "sha256",
+      "DEFAULT_DAYS": "825",
+      "DEFAULT_RSA_KEY_BITS": "2048",
+      "KEYUSAGE": "critical, digitalSignature",
+      "BASICCONSTRAINTS": "CA:FALSE",
+      "AUTHORITYKEYIDENTIFIER": "keyid,issuer",
+      "EXTENDEDKEYUSAGE": "clientAuth",
+      "CRL_URL": "{PKI_BASE_URL}/organizations/{org_id}/crl/{issuer_name}"
+    },
+    "end-entity-email": {
+      "ec_curve": "secp256r1",
+      "key_encryption_cipher": "aes256",
+      "DEFAULT_HASH_CA": "sha256",
+      "DEFAULT_HASH_REQ": "sha256",
+      "DEFAULT_DAYS": "825",
+      "DEFAULT_RSA_KEY_BITS": "2048",
+      "KEYUSAGE": "critical, digitalSignature",
+      "BASICCONSTRAINTS": "CA:FALSE",
+      "AUTHORITYKEYIDENTIFIER": "keyid,issuer",
+      "EXTENDEDKEYUSAGE": "clientAuth, emailProtection",
+      "CRL_URL": "{PKI_BASE_URL}/organizations/{org_id}/crl/{issuer_name}"
+    }
+  },
+
+  "ec_curves": [
+    {
+      "name": "secp256k1",
+      "recommended_hash": "sha256",
+      "fips_approved": false,
+      "info": "Bitcoin curve; NOT FIPS 186-5 approved. Limited support in TLS stacks (NSS, Go, Firefox). Use secp256r1 instead for TLS."
+    },
+    {
+      "name": "secp256r1",
+      "recommended_hash": "sha256",
+      "fips_approved": true,
+      "info": "P-256 curve; FIPS 186-5 approved. Industry standard for TLS. Also known as prime256v1."
+    },
+    {
+      "name": "prime256v1",
+      "recommended_hash": "sha256",
+      "fips_approved": true,
+      "info": "Alias of secp256r1 accepted by OpenSSL; included for compatibility with existing configurations."
+    },
+    {
+      "name": "secp384r1",
+      "recommended_hash": "sha384",
+      "fips_approved": true,
+      "info": "Stronger EC curve commonly used for offline Root and high security Intermediate CAs."
+    },
+    {
+      "name": "secp521r1",
+      "recommended_hash": "sha512",
+      "fips_approved": true,
+      "info": "Very high security EC curve; suitable for long term roots where performance and certificate size are less critical."
+    }
+  ],
+
+  "key_encryption_ciphers": [
+    {
+      "name": "aes256",
+      "fips_approved": true,
+      "info": "Default and strongly recommended cipher for encrypting CA private keys."
+    },
+    {
+      "name": "aes192",
+      "fips_approved": true,
+      "info": "Acceptable alternative when policy requires flexibility, but not preferred over AES-256."
+    },
+    {
+      "name": "aes128",
+      "fips_approved": true,
+      "info": "Lowest acceptable AES strength; suitable only for non-root or short-lived keys."
+    }
+  ],
+
+  "ui": {
+    "dashboard": {
+      "expiration_warning_days": 90,
+      "info": "Days ahead to check for expiring certificates on landing page dashboard timeline"
+    }
+  }
+}

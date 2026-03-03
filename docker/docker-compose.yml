@@ -1,0 +1,38 @@
+version: '3.8'
+
+services:
+  pki:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile
+    container_name: pki-app
+    ports:
+      - "8000:8000"
+    environment:
+      # Server configuration
+      PKI_HOST: 0.0.0.0
+      PKI_PORT: 8000
+      PKI_LOG_LEVEL: INFO
+      # Storage paths explicitly mapped to Docker volumes
+      PKI_DATA_DIR: /app/data
+      PKI_DB_PATH: /app/database/pki.db
+    env_file:
+      - .env
+    volumes:
+      # Persistent storage for encrypted certificate artifacts
+      - pki_data:/app/data
+      # Persistent storage for SQLite database
+      - pki_database:/app/database
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/healthz"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 10s
+    restart: unless-stopped
+
+volumes:
+  pki_data:
+    driver: local
+  pki_database:
+    driver: local

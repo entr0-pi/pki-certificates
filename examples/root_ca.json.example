@@ -1,0 +1,16 @@
+{
+  "org_dir": "org_demo_9f3",
+  "cert_name": "root_anchor_9f3",
+  "artifact_name": "a73f6f9d-57c2-4a85-9d7d-5e65bda88f11",
+  "cert_type": "root",
+  "subjectAltName": "",
+  "C": "US",
+  "ST": "Virginia",
+  "L": "Ashburn",
+  "O": "Nimbus Labs",
+  "OU": "Trust Services",
+  "CN": "Nimbus Labs Root CA",
+  "email": "pki-root@nimbus-labs.example",
+  "enddate": "20341231235959Z",
+  "eccurve": "secp384r1"
+}

@@ -1,0 +1,73 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="cupcake">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Error - Organization Creation Failed</title>
+    <link href="https://cdn.jsdelivr.net/npm/daisyui@4.6.0/dist/full.min.css" rel="stylesheet" type="text/css" />
+    <script src="https://cdn.tailwindcss.com"></script>
+</head>
+<body class="bg-base-200 min-h-screen p-6">
+    <div class="container mx-auto max-w-3xl">
+        <!-- Header -->
+        <div class="card bg-base-100 shadow-xl mb-6">
+            <div class="card-body">
+                <span class="uppercase tracking-[0.4em] text-xs text-base-content/60">The ultimate tool</span>
+                <h1 class="text-4xl sm:text-5xl font-semibold">Organization Creation Failed</h1>
+                <p class="text-lg text-base-content/70">We could not create the organization</p>
+            </div>
+        </div>
+
+        <!-- Error Card -->
+        <div class="card bg-base-100 shadow-2xl">
+            <div class="card-body p-8">
+                <h2 class="text-2xl font-semibold mb-4">Error Details</h2>
+
+                <div role="alert" class="alert alert-error mb-6">
+                    <svg xmlns="http://www.w3.org/2000/svg" class="stroke-current shrink-0 h-6 w-6" fill="none" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 14l2-2m0 0l2-2m-2 2l-2-2m2 2l2 2m7-2a9 9 0 11-18 0 9 9 0 0118 0z" />
+                    </svg>
+                    <div>
+                        <h3 class="font-bold">Error Message:</h3>
+                        <div class="text-sm mt-1">{{ error_message }}</div>
+                    </div>
+                </div>
+
+                <div class="bg-base-200 rounded-box p-6 mb-6">
+                    <h3 class="font-bold text-lg mb-4 flex items-center gap-2">
+                        <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z" />
+                        </svg>
+                        Troubleshooting Tips:
+                    </h3>
+                    <ul class="list-disc list-inside space-y-2 text-base-content/80">
+                        <li class="ml-2">Check that the organization directory name contains only letters, numbers, and underscores</li>
+                        <li class="ml-2">Ensure the organization doesn't already exist in the system</li>
+                        <li class="ml-2">Verify you have write permissions in the current directory</li>
+                        <li class="ml-2">Make sure the <code class="bg-base-100 px-2 py-1 rounded">backend/folder.py</code> script is accessible</li>
+                        <li class="ml-2">Check the server logs for more detailed error information</li>
+                    </ul>
+                </div>
+
+                <div class="divider my-8"></div>
+
+                <div class="card-actions justify-center">
+                    <a href="/" class="btn btn-primary btn-lg">
+                        <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 19l-7-7m0 0l7-7m-7 7h18" />
+                        </svg>
+                        Try Again
+                    </a>
+                </div>
+            </div>
+        </div>
+
+        <div class="text-center mt-6 text-base-content/60">
+            <p class="text-sm">PKI Management System - Public Key Infrastructure</p>
+        </div>
+    </div>
+    <script src="/static/theme-toggle.js"></script>
+</body>
+</html>
+
+

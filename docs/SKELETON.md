@@ -1,0 +1,22 @@
+org_X_NAME/
+ 1_root/
+    certs/
+    crl/
+    csr/
+    private/
+ 2_intermediates/
+    intermediate1/
+       certs/
+       crl/
+       csr/
+       private/
+    intermediate2/
+       ...
+    intermediatex/
+ 3_end-entities/
+    client/
+       certs/
+       csr/
+       private/
+    email/
+  server/

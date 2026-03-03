@@ -1,0 +1,86 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="cupcake">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Organization Created Successfully</title>
+    <link href="https://cdn.jsdelivr.net/npm/daisyui@4.6.0/dist/full.min.css" rel="stylesheet" type="text/css" />
+    <script src="https://cdn.tailwindcss.com"></script>
+</head>
+<body class="bg-base-200 min-h-screen p-6">
+    <div class="container mx-auto max-w-3xl">
+        <!-- Header -->
+        <div class="card bg-base-100 shadow-xl mb-6">
+            <div class="card-body">
+                <span class="uppercase tracking-[0.4em] text-xs text-base-content/60">The ultimate tool</span>
+                <h1 class="text-4xl sm:text-5xl font-semibold">Organization Created</h1>
+                <p class="text-lg text-base-content/70">Your PKI workspace is ready</p>
+            </div>
+        </div>
+
+        <!-- Success Card -->
+        <div class="card bg-base-100 shadow-2xl">
+            <div class="card-body p-8">
+                <h2 class="text-2xl font-semibold mb-4">Organization Details</h2>
+
+                <div class="bg-base-200 rounded-box p-6 mb-6">
+                    <div class="space-y-3">
+                        <div class="flex justify-between items-center">
+                            <span class="font-semibold text-lg">Organization Name:</span>
+                            <span class="text-lg">{{ org_display_name }}</span>
+                        </div>
+                        <div class="flex justify-between items-center">
+                            <span class="font-semibold text-lg">Directory:</span>
+                            <span class="text-lg">{{ org_name }}</span>
+                        </div>
+                        {% if org_id %}
+                        <div class="flex justify-between items-center">
+                            <span class="font-semibold text-lg">Database ID:</span>
+                            <span class="badge badge-info">{{ org_id }}</span>
+                        </div>
+                        {% endif %}
+                    </div>
+                </div>
+
+                {% if db_saved %}
+                <div role="alert" class="alert alert-success mb-6">
+                    <svg xmlns="http://www.w3.org/2000/svg" class="stroke-current shrink-0 h-6 w-6" fill="none" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+                    </svg>
+                    <div>
+                        <strong>Database Updated!</strong>
+                        <span>Organization has been registered in the PKI database and is ready for certificate management.</span>
+                    </div>
+                </div>
+                {% endif %}
+
+                <div class="divider my-8"></div>
+
+                <div class="card-actions justify-between">
+                    <a href="/" class="btn btn-ghost">
+                        <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 19l-7-7m0 0l7-7m-7 7h18" />
+                        </svg>
+                        Create Another Organization
+                    </a>
+                    {% if org_id %}
+                    <a href="/organizations/{{ org_id }}/manage" class="btn btn-primary">
+                        <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 7h8m0 0v8m0-8l-8 8-4-4-6 6" />
+                        </svg>
+                        Go to Dashboard
+                    </a>
+                    {% endif %}
+                </div>
+            </div>
+        </div>
+
+        <div class="text-center mt-6 text-base-content/60">
+            <p class="text-sm">PKI Management System - Public Key Infrastructure</p>
+        </div>
+    </div>
+    <script src="/static/theme-toggle.js"></script>
+</body>
+</html>
+
+

@@ -1,0 +1,21 @@
+{
+  "_comment": "Per-route role access control. Format: 'METHOD /path/template': [roles]. Absent key = any authenticated user. Known roles: admin, manager, user.",
+  "GET /toolbox": ["admin"],
+  "POST /create-organization": ["admin"],
+  "GET /health": ["admin", "manager"],
+  "GET /organizations": ["admin", "manager", "user"],
+  "GET /organizations/{org_id}/manage": ["admin", "manager", "user"],
+  "GET /organizations/{org_id}/create-certificate": ["admin", "manager"],
+  "GET /organizations/{org_id}/certificates/{cert_id}/renew": ["admin", "manager"],
+  "GET /organizations/{org_id}/root-ca": ["admin"],
+  "POST /organizations/{org_id}/root-ca": ["admin"],
+  "GET /organizations/{org_id}/intermediate-ca": ["admin"],
+  "POST /organizations/{org_id}/intermediate-ca": ["admin"],
+  "GET /organizations/{org_id}/end-entity": ["admin", "manager"],
+  "POST /organizations/{org_id}/end-entity": ["admin", "manager"],
+  "GET /organizations/{org_id}/certificates/{cert_id}/popup": ["admin", "manager", "user"],
+  "GET /organizations/{org_id}/certificates/{cert_id}/download": ["admin", "manager"],
+  "POST /organizations/{org_id}/certificates/{cert_id}/revoke": ["admin"],
+  "GET /organizations/{org_id}/certificates/{cert_id}/private-key/plain": ["admin"],
+  "GET /api/check-consistency": ["admin", "manager"]
+}

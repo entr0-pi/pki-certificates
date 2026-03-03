@@ -1,0 +1,19 @@
+{
+  "org_dir": "org_demo_9f3",
+  "cert_name": "mail-svc-marketing-02",
+  "artifact_name": "88b2f4de-cdc8-4dd4-9cdf-0fa6ce0be6b9",
+  "cert_type": "email",
+  "C": "US",
+  "ST": "Virginia",
+  "L": "Ashburn",
+  "O": "Nimbus Labs",
+  "OU": "Marketing",
+  "CN": "Marketing Notifications",
+  "email": "notifications-marketing@nimbus-labs.example",
+  "subjectAltName": "EMAIL:notifications-marketing@nimbus-labs.example",
+  "issuer_name": "edge_issuing_ca_01",
+  "issuer_artifact_name": "c4d2b9c1-9a0f-4f74-a4af-cd9e4d1439d2",
+  "issuer_type": "intermediate",
+  "eccurve": "secp256r1",
+  "enddate": "20271231235959Z"
+}

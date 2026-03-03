@@ -1,0 +1,207 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="cupcake">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Renew Certificate</title>
+    <link href="https://cdn.jsdelivr.net/npm/daisyui@4.6.0/dist/full.min.css" rel="stylesheet" type="text/css" />
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        .form-hint-alt {
+            font-size: 0.75rem;
+            font-weight: 400;
+            color: inherit;
+            opacity: 0.55;
+        }
+        .form-hint-warning {
+            color: hsl(var(--wa));
+        }
+    </style>
+</head>
+<body class="bg-base-200 min-h-screen p-6">
+    <div class="container mx-auto max-w-4xl">
+        <!-- Header -->
+        <div class="card bg-base-100 shadow-xl mb-6">
+            <div class="card-body">
+                <a href="/organizations/{{ organization.id }}/manage" class="btn btn-ghost btn-sm w-fit mb-2">
+                    <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7" />
+                    </svg>
+                    Back
+                </a>
+                <span class="uppercase tracking-[0.4em] text-xs text-base-content/60">PKI Management</span>
+                <h1 class="text-4xl font-semibold">Renew Certificate</h1>
+                <p class="text-lg text-base-content/70">Organization: {{ organization.name }}</p>
+            </div>
+        </div>
+
+        <!-- Original Certificate Info -->
+        <div class="card bg-base-100 shadow-xl mb-6">
+            <div class="card-body">
+                <h2 class="card-title mb-4">Certificate to Renew</h2>
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-4 text-sm">
+                    <div><span class="font-semibold">Current Name:</span> {{ certificate.cert_name }}</div>
+                    <div><span class="font-semibold">Type:</span> {{ certificate.cert_type }}</div>
+                    <div><span class="font-semibold">Common Name (CN):</span> {{ certificate.subject_common_name }}</div>
+                    <div><span class="font-semibold">Organization (O):</span> {{ certificate.subject_organization or "-" }}</div>
+                    <div><span class="font-semibold">Org Unit (OU):</span> {{ certificate.subject_org_unit or "-" }}</div>
+                    <div><span class="font-semibold">Country (C):</span> {{ certificate.subject_country or "-" }}</div>
+                    <div><span class="font-semibold">State (ST):</span> {{ certificate.subject_state or "-" }}</div>
+                    <div><span class="font-semibold">Locality (L):</span> {{ certificate.subject_locality or "-" }}</div>
+                    {% if certificate.subject_email %}
+                    <div><span class="font-semibold">Email:</span> {{ certificate.subject_email }}</div>
+                    {% endif %}
+                    {% if san_str %}
+                    <div><span class="font-semibold">SAN:</span> {{ san_str }}</div>
+                    {% endif %}
+                    <div><span class="font-semibold">Valid Until:</span> {{ certificate.not_after }}</div>
+                    {% if issuer_name %}
+                    <div><span class="font-semibold">Issuer:</span> {{ issuer_name }}</div>
+                    {% endif %}
+                </div>
+            </div>
+        </div>
+
+        <!-- Renewal Form -->
+        <div class="card bg-base-100 shadow-xl">
+            <div class="card-body p-8">
+                <h2 class="text-2xl font-semibold mb-6">Renewal Details</h2>
+
+                <form action="{{ form_action }}" method="post" class="space-y-4">
+                    <!-- Hidden fields: all original data -->
+                    <input type="hidden" name="C" value="{{ certificate.subject_country or '' }}">
+                    <input type="hidden" name="ST" value="{{ certificate.subject_state or '' }}">
+                    <input type="hidden" name="L" value="{{ certificate.subject_locality or '' }}">
+                    <input type="hidden" name="O" value="{{ certificate.subject_organization or '' }}">
+                    <input type="hidden" name="OU" value="{{ certificate.subject_org_unit or '' }}">
+                    <input type="hidden" name="CN" value="{{ certificate.subject_common_name }}">
+                    {% if certificate.subject_email %}
+                    <input type="hidden" name="email" value="{{ certificate.subject_email }}">
+                    {% endif %}
+                    {% if san_str %}
+                    <input type="hidden" name="subjectAltName" value="{{ san_str }}">
+                    {% endif %}
+                    {% if certificate.ec_curve %}
+                    <input type="hidden" name="eccurve" value="{{ certificate.ec_curve }}">
+                    {% endif %}
+
+                    <!-- End-entity specific hidden fields -->
+                    {% if certificate.cert_type in ('server', 'client', 'email') %}
+                    <input type="hidden" name="cert_type" value="{{ certificate.cert_type }}">
+                    {% if issuer_name %}
+                    <input type="hidden" name="issuer_name" value="{{ issuer_name }}">
+                    <input type="hidden" name="issuer_type" value="{{ issuer_type }}">
+                    {% endif %}
+                    {% endif %}
+
+                    <!-- Renewal marker: auto-revoke the previous cert when this one is created -->
+                    <input type="hidden" name="renewal_of_cert_id" value="{{ certificate.id }}">
+
+                    <!-- Visible fields: cert_name and enddate on the same row -->
+                    <div class="grid grid-cols-1 md:grid-cols-2 gap-6 md:gap-16">
+                        <div class="form-control">
+                            <label class="label">
+                                <span class="label-text font-semibold">New Certificate Name *</span>
+                                <span class="label-text-alt form-hint-alt">Used for filenames</span>
+                            </label>
+                            <input
+                                type="text"
+                                name="cert_name"
+                                id="cert_name"
+                                value="{{ suggested_name }}"
+                                class="input input-bordered"
+                                required
+                            />
+                            <label class="label">
+                                <span class="label-text-alt text-xs">The original certificate will be automatically revoked</span>
+                            </label>
+                        </div>
+                        <div class="form-control">
+                            <label class="label"><span class="label-text font-semibold">Certificate Valid Until *</span></label>
+                            <div class="grid grid-cols-1 md:grid-cols-2 gap-3 mb-2 items-center">
+                                <div class="flex gap-3">
+                                    <label class="flex items-center gap-2">
+                                        <input type="radio" name="duration_type" value="days" class="radio radio-sm" checked id="duration_days_radio">
+                                        <span class="text-sm">Days from now</span>
+                                    </label>
+                                    <label class="flex items-center gap-2">
+                                        <input type="radio" name="duration_type" value="date" class="radio radio-sm" id="duration_date_radio">
+                                        <span class="text-sm">Specific date</span>
+                                    </label>
+                                </div>
+                                <div class="md:justify-self-end">
+                                    <div id="days-input-renewal" class="flex gap-2">
+                                        <input type="number" class="input input-bordered w-32" placeholder="Days" value="365" id="enddate_days" />
+                                    </div>
+                                    <div id="date-input-renewal" class="hidden">
+                                        <input type="date" class="input input-bordered" id="enddate_date" />
+                                    </div>
+                                </div>
+                            </div>
+                            <input type="hidden" name="enddate" id="enddate" />
+                        </div>
+                    </div>
+
+                    <div class="divider"></div>
+
+                    <div class="form-control">
+                        <button type="submit" class="btn btn-primary">
+                            <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4" />
+                            </svg>
+                            Create Renewed Certificate
+                        </button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+    <script>
+        const form = document.querySelector('form');
+        const enddateInput = document.getElementById('enddate');
+        const daysRadio = document.getElementById('duration_days_radio');
+        const dateRadio = document.getElementById('duration_date_radio');
+        const daysInputDiv = document.getElementById('days-input-renewal');
+        const dateInputDiv = document.getElementById('date-input-renewal');
+        const daysInput = document.getElementById('enddate_days');
+        const dateInput = document.getElementById('enddate_date');
+
+        function updateEndDate() {
+            const checkedRadio = form.querySelector('input[name="duration_type"]:checked');
+            if (checkedRadio.value === "days") {
+                const days = parseInt(daysInput.value || "365");
+                const date = new Date();
+                date.setDate(date.getDate() + days);
+                enddateInput.value = date.toISOString().replace(/[-:TZ.]/g, '').slice(0, 14) + 'Z';
+            } else {
+                if (dateInput.value) {
+                    const date = new Date(dateInput.value + 'T00:00:00Z');
+                    enddateInput.value = date.toISOString().replace(/[-:TZ.]/g, '').slice(0, 14) + 'Z';
+                }
+            }
+        }
+
+        daysRadio.addEventListener('change', () => {
+            daysInputDiv.classList.remove('hidden');
+            dateInputDiv.classList.add('hidden');
+            updateEndDate();
+        });
+
+        dateRadio.addEventListener('change', () => {
+            daysInputDiv.classList.add('hidden');
+            dateInputDiv.classList.remove('hidden');
+            updateEndDate();
+        });
+
+        daysInput.addEventListener('input', updateEndDate);
+        dateInput.addEventListener('change', updateEndDate);
+
+        updateEndDate();
+    </script>
+    <script src="/static/theme-toggle.js"></script>
+</body>
+</html>
+
+
+
+
