@@ -300,12 +300,6 @@ See [**SECURITY.md**](docs/SECURITY.md) for detailed hardening recommendations.
 
 ---
 
-## 📄 License
-
-[Add your license here]
-
----
-
 ## 🎯 Next Steps
 
 1. **Deploy locally** → See Quickstart above
