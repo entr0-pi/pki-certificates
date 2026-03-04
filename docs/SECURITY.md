@@ -242,6 +242,14 @@ except subprocess.TimeoutExpired:
 }
 ```
 
+**Public Endpoints** (No Authentication Required):
+- **CRL Distribution Points**: `/organizations/{org_id}/crl/*`
+  - Reason: Browsers and applications need to fetch CRLs without authentication to validate certificate revocation status
+  - This is required by RFC 5280 and X.509 PKI standards
+  - CRL contents are non-sensitive (only lists revoked certificate serial numbers)
+- **Login/Logout**: `/auth/login`, `/auth/session`, `/auth/logout`
+  - Required for session establishment
+
 ---
 
 ### 8. Input Validation (Issue #5)

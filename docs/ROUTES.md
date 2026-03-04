@@ -120,10 +120,10 @@ Legend: `✓` allowed, `-` denied, `public` no auth required.
 
 | Route | admin | manager | user | Notes |
 |------|:-----:|:-------:|:----:|------|
-| `GET /organizations/{org_id}/crl/{issuer_name}` | ✓ | ✓ | ✓ | Issuer CRL |
-| `GET /organizations/{org_id}/crl/download` | ✓ | ✓ | ✓ | Latest CRL |
-| `GET /organizations/{org_id}/crl/bundle` | ✓ | ✓ | ✓ | CRL bundle |
-| `GET /organizations/{org_id}/crl/{issuer_name}/bundle` | ✓ | ✓ | ✓ | Issuer CRL bundle |
+| `GET /organizations/{org_id}/crl/{issuer_name}` | public | public | public | Issuer CRL (public endpoint) |
+| `GET /organizations/{org_id}/crl/download` | public | public | public | Latest CRL (public endpoint) |
+| `GET /organizations/{org_id}/crl/bundle` | public | public | public | CRL bundle (public endpoint) |
+| `GET /organizations/{org_id}/crl/{issuer_name}/bundle` | public | public | public | Issuer CRL bundle (public endpoint) |
 
 ### Health and Diagnostics
 
@@ -328,7 +328,7 @@ Legend: `✓` allowed, `-` denied, `public` no auth required.
 - Response JSON: none (private key file download)
 
 ### `GET /organizations/{org_id}/crl/{issuer_name}`
-- Auth required: yes
+- Auth required: no (public CRL endpoint for certificate validators)
 - Request JSON: none
 - Query params (optional):
 ```json
@@ -339,17 +339,17 @@ Legend: `✓` allowed, `-` denied, `public` no auth required.
 - Response JSON: none (CRL file download)
 
 ### `GET /organizations/{org_id}/crl/download`
-- Auth required: yes
+- Auth required: no (public CRL endpoint for certificate validators)
 - Request JSON: none
 - Response JSON: none (CRL file download)
 
 ### `GET /organizations/{org_id}/crl/bundle`
-- Auth required: yes
+- Auth required: no (public CRL endpoint for certificate validators)
 - Request JSON: none
 - Response JSON: none (CRL bundle file download)
 
 ### `GET /organizations/{org_id}/crl/{issuer_name}/bundle`
-- Auth required: yes
+- Auth required: no (public CRL endpoint for certificate validators)
 - Request JSON: none
 - Query params (optional):
 ```json

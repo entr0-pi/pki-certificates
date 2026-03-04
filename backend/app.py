@@ -181,6 +181,11 @@ async def http_exception_handler(request: Request, exc):
 AUTH_EXEMPT_PATHS = {"/auth/login", "/auth/session", "/auth/logout", "/healthz"}
 
 
+def _is_crl_route(path: str) -> bool:
+    """Check if path is a public CRL endpoint (no authentication required)."""
+    return "/crl/" in path
+
+
 def _requires_non_html_unauthorized(path: str) -> bool:
     if path == "/health" or path == "/organizations" or path.startswith("/api/"):
         return True
@@ -194,7 +199,7 @@ def _requires_non_html_unauthorized(path: str) -> bool:
 @app.middleware("http")
 async def auth_session_middleware(request: Request, call_next):
     path = request.url.path
-    if path.startswith("/static/") or path in AUTH_EXEMPT_PATHS:
+    if path.startswith("/static/") or path in AUTH_EXEMPT_PATHS or _is_crl_route(path):
         return await call_next(request)
 
     settings: AuthSettings = request.app.state.auth_settings
