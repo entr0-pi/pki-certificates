@@ -79,7 +79,6 @@ docker run -d \
 | [**ROUTES.md**](docs/ROUTES.md) | Complete API endpoint reference + role-based access control matrix |
 | [**DB_SCHEMA.md**](docs/DB_SCHEMA.md) | Database schema, tables, relationships |
 | [**SECURITY.md**](docs/SECURITY.md) | Security considerations and hardening |
-| [**webapp_manual_test_plan.md**](docs/webapp_manual_test_plan.md) | QA testing guide for all features |
 | [**CRON_JOBS.md**](docs/CRON_JOBS.md) | Scheduling consistency checks |
 
 ---
