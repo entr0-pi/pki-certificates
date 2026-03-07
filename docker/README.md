@@ -54,10 +54,7 @@ curl -b "pki_session=<your-jwt-cookie>" http://localhost:8000/health
 ## Building the Image
 
 ```bash
-# From the docker/ directory:
-docker build -t pki-app:latest .
-
-# Or from the project root:
+# From the project root:
 docker build -f docker/Dockerfile -t pki-app:latest .
 ```
 
