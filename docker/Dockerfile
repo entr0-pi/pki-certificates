@@ -17,7 +17,7 @@ FROM node:18-alpine as frontend-build
 
 WORKDIR /frontend
 COPY package.json package-lock.json ./
-RUN npm ci --omit=dev
+RUN npm ci
 COPY tailwind.config.js frontend/ ./
 RUN npm run build:css
 
