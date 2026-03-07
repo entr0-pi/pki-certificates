@@ -15,10 +15,10 @@ RUN pip install --no-cache-dir -r requirements.txt
 # Stage 2: Frontend CSS Build
 FROM node:18-alpine as frontend-build
 
-WORKDIR /frontend
-COPY package.json package-lock.json ./
+WORKDIR /app
+COPY package.json package-lock.json tailwind.config.js ./
+COPY frontend/ ./frontend/
 RUN npm ci
-COPY tailwind.config.js frontend/ ./
 RUN npm run build:css
 
 # Stage 3: Application
@@ -42,7 +42,7 @@ COPY --chown=pki:pki database/ /app/database/
 COPY --chown=pki:pki scripts/start_webapp.sh /app/
 
 # Override CSS bundle with freshly built version from frontend-build stage
-COPY --from=frontend-build --chown=pki:pki /frontend/frontend/static/vendor/bundle.css /app/frontend/static/vendor/
+COPY --from=frontend-build --chown=pki:pki /app/frontend/static/vendor/bundle.css /app/frontend/static/vendor/
 
 # Set environment defaults
 # Note: PKI_DATA_DIR and PKI_DB_PATH are explicitly set to match volume mount points
