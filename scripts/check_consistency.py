@@ -291,7 +291,7 @@ class ConsistencyChecker:
         if cert_type == "intermediate" and issuer_row["cert_type"] != "root":
             self.issue("error", f"[{cert_id}] {cert_name}: intermediate must be issued by root, got {issuer_row['cert_type']}.")
             self.stats["issuer_link_mismatches"] += 1
-        if cert_type in ("server", "client", "email") and issuer_row["cert_type"] != "intermediate":
+        if cert_type in ("server", "client", "email", "ocsp") and issuer_row["cert_type"] != "intermediate":
             self.issue(
                 "error",
                 f"[{cert_id}] {cert_name}: end-entity cert must be issued by intermediate, got {issuer_row['cert_type']}."
@@ -402,8 +402,8 @@ class ConsistencyChecker:
             return
 
         # cryptography naive datetime values are UTC-like; compare on same naive format used by DB.
-        pem_not_before = pem_cert.not_valid_before.replace(tzinfo=None)
-        pem_not_after = pem_cert.not_valid_after.replace(tzinfo=None)
+        pem_not_before = pem_cert.not_valid_before_utc.replace(tzinfo=None)
+        pem_not_after = pem_cert.not_valid_after_utc.replace(tzinfo=None)
 
         if pem_not_before >= pem_not_after:
             self.issue(
@@ -468,7 +468,7 @@ class ConsistencyChecker:
                 if not ku.crl_sign:
                     self.issue("error", f"[{cert_id}] {cert_name}: {cert_type} missing cRLSign in KeyUsage.")
                     self.stats["type_policy_mismatches"] += 1
-        elif cert_type in ("server", "client", "email"):
+        elif cert_type in ("server", "client", "email", "ocsp"):
             if bc.ca:
                 self.issue("error", f"[{cert_id}] {cert_name}: end-entity ({cert_type}) must have CA=FALSE.")
                 self.stats["type_policy_mismatches"] += 1
@@ -477,6 +477,7 @@ class ConsistencyChecker:
                 "server": "1.3.6.1.5.5.7.3.1",   # serverAuth
                 "client": "1.3.6.1.5.5.7.3.2",   # clientAuth
                 "email": "1.3.6.1.5.5.7.3.4",    # emailProtection
+                "ocsp": "1.3.6.1.5.5.7.3.9",     # OCSPSigning
             }[cert_type]
             if expected_eku not in eku_oids:
                 self.issue(
@@ -525,7 +526,7 @@ class ConsistencyChecker:
                     f"[{cert_id}] {cert_name}: {cert_type} has pwd_path set in DB ({pwd_path_rel}); expected empty with prompt-based CA passphrase."
                 )
                 self.stats["artifact_path_mismatches"] += 1
-        elif cert_type in ("server", "client", "email"):
+        elif cert_type in ("server", "client", "email", "ocsp"):
             if not pwd_path_rel:
                 self.issue("error", f"[{cert_id}] {cert_name}: end-entity missing pwd_path in DB.")
                 self.stats["artifact_path_mismatches"] += 1
@@ -779,8 +780,8 @@ class ConsistencyChecker:
                 self.stats["crl_semantic_mismatches"] += 1
 
             try:
-                this_update = parsed_crl.last_update.replace(tzinfo=None)
-                next_update = parsed_crl.next_update.replace(tzinfo=None) if parsed_crl.next_update else None
+                this_update = parsed_crl.last_update_utc.replace(tzinfo=None)
+                next_update = parsed_crl.next_update_utc.replace(tzinfo=None) if parsed_crl.next_update_utc else None
                 if next_update and this_update >= next_update:
                     self.issue("error", f"[CRL {crl_id}] invalid update window (this_update >= next_update).")
                     self.stats["crl_semantic_mismatches"] += 1
@@ -938,7 +939,7 @@ class ConsistencyChecker:
         _check(cert.get("cert_path"), ".pem.enc", "cert_path")
         _check(cert.get("key_path"), ".key.enc", "key_path")
         _check(cert.get("csr_path"), ".csr.enc", "csr_path")
-        if cert_type in ("server", "client", "email"):
+        if cert_type in ("server", "client", "email", "ocsp"):
             _check(cert.get("pwd_path"), ".pwd.enc", "pwd_path")
 
     def check_file_hash_integrity(self):
