@@ -7,7 +7,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     gcc libssl-dev && \
     rm -rf /var/lib/apt/lists/*
 
-COPY ../requirements.txt .
+COPY requirements.txt .
 RUN python -m venv /opt/venv
 ENV PATH="/opt/venv/bin:$PATH"
 RUN pip install --no-cache-dir -r requirements.txt
@@ -16,9 +16,9 @@ RUN pip install --no-cache-dir -r requirements.txt
 FROM node:18-alpine as frontend-build
 
 WORKDIR /frontend
-COPY ../package.json ../package-lock.json ./
+COPY package.json package-lock.json ./
 RUN npm ci --omit=dev
-COPY ../tailwind.config.js ../frontend/ ./
+COPY tailwind.config.js frontend/ ./
 RUN npm run build:css
 
 # Stage 3: Application
@@ -35,11 +35,11 @@ RUN useradd -m -u 1000 pki && \
 COPY --from=py-deps --chown=pki:pki /opt/venv /opt/venv
 
 # Copy application code only (exclude tests, docs, config files)
-COPY --chown=pki:pki ../backend/ /app/backend/
-COPY --chown=pki:pki ../frontend/ /app/frontend/
-COPY --chown=pki:pki ../scripts/ /app/scripts/
-COPY --chown=pki:pki ../database/ /app/database/
-COPY --chown=pki:pki ../start_webapp.sh /app/
+COPY --chown=pki:pki backend/ /app/backend/
+COPY --chown=pki:pki frontend/ /app/frontend/
+COPY --chown=pki:pki scripts/ /app/scripts/
+COPY --chown=pki:pki database/ /app/database/
+COPY --chown=pki:pki scripts/start_webapp.sh /app/
 
 # Override CSS bundle with freshly built version from frontend-build stage
 COPY --from=frontend-build --chown=pki:pki /frontend/frontend/static/vendor/bundle.css /app/frontend/static/vendor/
