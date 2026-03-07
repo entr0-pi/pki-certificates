@@ -136,8 +136,10 @@
 
   "ui": {
     "dashboard": {
-      "expiration_warning_days": 90,
-      "info": "Days ahead to check for expiring certificates on landing page dashboard timeline"
+      "alert_window_days": 90,
+      "warning_days": 60,
+      "critical_days": 30,
+      "info": "Expiration thresholds for certificate alerts in days. alert_window_days: outer lookahead window used on landing page and org dashboard. warning_days: medium-urgency threshold. critical_days: high-urgency threshold."
     }
   }
 }

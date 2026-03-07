@@ -33,6 +33,9 @@ PROJECT_ROOT = get_project_root()
 DB_PATH = get_db_path()
 SCHEMA_PATH = get_schema_path()
 
+# Schema version this codebase expects
+SCHEMA_VERSION = 1
+
 # SQLAlchemy Engine singleton
 engine = create_engine(
     f"sqlite:///{DB_PATH}",
@@ -44,6 +47,116 @@ engine = create_engine(
 def _set_sqlite_pragmas(dbapi_conn, _):
     dbapi_conn.execute("PRAGMA journal_mode=WAL")
     dbapi_conn.execute("PRAGMA foreign_keys=ON")
+
+
+def _validate_schema_version(conn) -> None:
+    """
+    Check that the schema_version table exists and matches SCHEMA_VERSION.
+    Raises RuntimeError on mismatch or missing table.
+    Called for existing DBs only (not during fresh creation).
+    conn: a SQLAlchemy connection (inside engine.begin() context).
+    """
+    result = conn.execute(
+        text(
+            "SELECT name FROM sqlite_master "
+            "WHERE type='table' AND name='schema_version'"
+        )
+    )
+    if not result.fetchone():
+        raise RuntimeError(
+            "schema_version table is missing. Re-initialize the database from "
+            "database/pki_schema.sql to continue."
+        )
+    row = conn.execute(
+        text("SELECT version FROM schema_version ORDER BY applied_at DESC LIMIT 1")
+    ).fetchone()
+    if row is None:
+        raise RuntimeError("schema_version table is empty. Database may be corrupt.")
+    if row[0] != SCHEMA_VERSION:
+        raise RuntimeError(
+            f"Schema version mismatch: database is at version {row[0]}, "
+            f"but this codebase expects version {SCHEMA_VERSION}."
+        )
+
+
+REQUIRED_TABLES = {
+    "organizations", "certificates", "subject_alternative_names",
+    "certificate_extensions", "basic_constraints", "key_usage",
+    "extended_key_usage", "crls", "revoked_certificates",
+    "certificate_audit_log", "schema_version",
+}
+
+REQUIRED_INDEXES = {
+    "idx_certs_org", "idx_certs_issuer", "idx_certs_type", "idx_certs_status",
+    "idx_certs_not_after", "idx_certs_serial", "idx_san_cert", "idx_ext_cert",
+    "idx_audit_cert", "idx_audit_timestamp",
+}
+
+
+def validate_database_integrity() -> list[str]:
+    """
+    Run structural integrity checks on the database.
+
+    Checks:
+    1. PRAGMA foreign_keys is ON (== 1)
+    2. PRAGMA journal_mode is WAL
+    3. Schema version matches SCHEMA_VERSION
+    4. All required tables exist
+    5. All required indexes exist
+
+    Returns:
+        List of issue description strings. Empty list means healthy.
+    """
+    issues: list[str] = []
+
+    with engine.connect() as conn:
+        # 1. Foreign key enforcement
+        fk_row = conn.execute(text("PRAGMA foreign_keys")).fetchone()
+        if fk_row is None or fk_row[0] != 1:
+            issues.append(
+                f"PRAGMA foreign_keys is not ON (got: {fk_row[0] if fk_row else None})"
+            )
+
+        # 2. WAL mode
+        wal_row = conn.execute(text("PRAGMA journal_mode")).fetchone()
+        if wal_row is None or wal_row[0].lower() != "wal":
+            issues.append(
+                f"PRAGMA journal_mode is not WAL (got: {wal_row[0] if wal_row else None})"
+            )
+
+        # 3. Schema version
+        try:
+            sv_row = conn.execute(
+                text("SELECT version FROM schema_version ORDER BY applied_at DESC LIMIT 1")
+            ).fetchone()
+            if sv_row is None:
+                issues.append("schema_version table is empty")
+            elif sv_row[0] != SCHEMA_VERSION:
+                issues.append(
+                    f"Schema version mismatch: DB={sv_row[0]}, expected={SCHEMA_VERSION}"
+                )
+        except Exception as e:
+            issues.append(f"Cannot read schema_version: {e}")
+
+        # 4. Required tables
+        table_rows = conn.execute(
+            text("SELECT name FROM sqlite_master WHERE type='table'")
+        ).fetchall()
+        present_tables = {row[0] for row in table_rows}
+        missing_tables = REQUIRED_TABLES - present_tables
+        for t in sorted(missing_tables):
+            issues.append(f"Missing required table: {t}")
+
+        # 5. Required indexes
+        index_rows = conn.execute(
+            text("SELECT name FROM sqlite_master WHERE type='index'")
+        ).fetchall()
+        present_indexes = {row[0] for row in index_rows}
+        missing_indexes = REQUIRED_INDEXES - present_indexes
+        for i in sorted(missing_indexes):
+            issues.append(f"Missing required index: {i}")
+
+    return issues
 
 
 @contextmanager
@@ -124,6 +237,20 @@ def init_database(auto_recreate_invalid: bool = False):
                 "Database exists but is missing required tables. "
                 "Set PKI_DB_AUTO_REINIT=true to recreate from database/pki_schema.sql."
             )
+
+    # Validate schema version
+    with engine.begin() as conn:
+        _validate_schema_version(conn)
+
+    # Validate database structural integrity
+    issues = validate_database_integrity()
+    if issues:
+        for issue in issues:
+            logger.error(f"Database integrity check failed: {issue}")
+        raise RuntimeError(
+            f"Database failed integrity checks ({len(issues)} issue(s)). "
+            "See error log for details."
+        )
 
     logger.info("Database initialized successfully")
 
@@ -1035,12 +1162,14 @@ def get_latest_certificate_by_name_and_type(
         return dict(row) if row else None
 
 
-def get_expiring_certificates(days_ahead: int = 90) -> List[Dict[str, Any]]:
+def get_expiring_certificates(days_ahead: int = 90, critical_days: int = 30, warning_days: int = 60) -> List[Dict[str, Any]]:
     """
     Get all active certificates expiring within the specified days.
 
     Args:
         days_ahead: Number of days ahead to check (default 90)
+        critical_days: Days threshold for critical alert level (default 30)
+        warning_days: Days threshold for warning alert level (default 60)
 
     Returns:
         List of dictionaries with certificate info and alert level
@@ -1048,12 +1177,12 @@ def get_expiring_certificates(days_ahead: int = 90) -> List[Dict[str, Any]]:
     with get_db_connection() as conn:
         # Get current time and expiration boundary
         now = datetime.now(timezone.utc)
-        expiration_boundary = now.isoformat()
+        expiration_boundary = now.strftime("%Y-%m-%d %H:%M:%S")
 
-        # Calculate days ahead timestamp (ISO format for SQLite comparison)
+        # Calculate days ahead timestamp (naive UTC format for SQLite comparison)
         from datetime import timedelta
         days_ahead_date = now + timedelta(days=days_ahead)
-        days_ahead_iso = days_ahead_date.isoformat()
+        days_ahead_iso = days_ahead_date.strftime("%Y-%m-%d %H:%M:%S")
 
         result = conn.execute(
             text("""
@@ -1081,12 +1210,12 @@ def get_expiring_certificates(days_ahead: int = 90) -> List[Dict[str, Any]]:
                 not_after = not_after.replace(tzinfo=timezone.utc)
             days_remaining = (not_after - now).days
 
-            if days_remaining <= 30:
-                cert['alert_level'] = 'critical'  # Red - 30 days
-            elif days_remaining <= 60:
-                cert['alert_level'] = 'warning'   # Orange - 60 days
+            if days_remaining <= critical_days:
+                cert['alert_level'] = 'critical'
+            elif days_remaining <= warning_days:
+                cert['alert_level'] = 'warning'
             else:
-                cert['alert_level'] = 'info'      # Yellow - 90 days
+                cert['alert_level'] = 'info'
 
             cert['days_remaining'] = days_remaining
 

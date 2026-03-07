@@ -5,8 +5,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Create Certificate - {{ organization.name }}</title>
-    <link href="https://cdn.jsdelivr.net/npm/daisyui@4.6.0/dist/full.min.css" rel="stylesheet" type="text/css" />
-    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="/static/vendor/bundle.css" rel="stylesheet" type="text/css" />
     <style>
         .required-marker {
             color: hsl(var(--er));
@@ -67,7 +66,7 @@
                         </div>
                         <div class="form-control">
                             <label class="label"><span class="label-text text-sm">Email</span></label>
-                            <input class="input input-bordered input-sm" name="email" placeholder="pki@example.com">
+                            <input type="email" class="input input-bordered input-sm" name="email" placeholder="pki@example.com">
                         </div>
                         <!-- Row 2: Organization, Org Unit -->
                         <div class="form-control">
@@ -107,7 +106,7 @@
                                 </div>
                                 <div>
                                     <div id="days-input-root" class="flex gap-2">
-                                        <input type="number" class="input input-bordered input-sm w-24" placeholder="Days" value="7300" data-form="root" data-type="days">
+                                        <input type="number" class="input input-bordered input-sm w-24" placeholder="Days" value="{{ default_days_root }}" data-form="root" data-type="days">
                                     </div>
                                     <div id="date-input-root" class="hidden">
                                         <input type="date" class="input input-bordered input-sm" data-form="root" data-type="date">
@@ -158,7 +157,7 @@
                         </div>
                         <div class="form-control">
                             <label class="label"><span class="label-text text-sm">Email</span></label>
-                            <input id="int_email" class="input input-bordered input-sm" name="email" placeholder="pki@example.com">
+                            <input type="email" id="int_email" class="input input-bordered input-sm" name="email" placeholder="pki@example.com">
                         </div>
                         <!-- Row 2: Organization, Org Unit -->
                         <div class="form-control">
@@ -198,7 +197,7 @@
                                 </div>
                                 <div>
                                     <div id="days-input-intermediate" class="flex gap-2">
-                                        <input type="number" class="input input-bordered input-sm w-24" placeholder="Days" value="3650" data-form="intermediate" data-type="days">
+                                        <input type="number" class="input input-bordered input-sm w-24" placeholder="Days" value="{{ default_days_intermediate }}" data-form="intermediate" data-type="days">
                                     </div>
                                     <div id="date-input-intermediate" class="hidden">
                                         <input type="date" class="input input-bordered input-sm" data-form="intermediate" data-type="date">
@@ -273,7 +272,7 @@
                         </div>
                         <div class="form-control">
                             <label class="label"><span class="label-text text-sm">Email</span></label>
-                            <input class="input input-bordered input-sm" name="email" id="eeEmail" placeholder="optional@example.com">
+                            <input type="email" class="input input-bordered input-sm" name="email" id="eeEmail" placeholder="optional@example.com">
                         </div>
                         <!-- Row 3: Organization, Org Unit -->
                         <div class="form-control">
@@ -313,7 +312,7 @@
                                 </div>
                                 <div>
                                     <div id="days-input-end-entity" class="flex gap-2">
-                                        <input type="number" class="input input-bordered input-sm w-24" placeholder="Days" value="825" data-form="end-entity" data-type="days">
+                                        <input type="number" class="input input-bordered input-sm w-24" placeholder="Days" value="{{ default_days_end_entity }}" data-form="end-entity" data-type="days">
                                     </div>
                                     <div id="date-input-end-entity" class="hidden">
                                         <input type="date" class="input input-bordered input-sm" data-form="end-entity" data-type="date">

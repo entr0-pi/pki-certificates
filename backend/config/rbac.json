@@ -15,6 +15,7 @@
   "POST /organizations/{org_id}/end-entity": ["admin", "manager"],
   "GET /organizations/{org_id}/certificates/{cert_id}/popup": ["admin", "manager", "user"],
   "GET /organizations/{org_id}/certificates/{cert_id}/download": ["admin", "manager"],
+  "GET /organizations/{org_id}/certificates/{cert_id}/p12-password": ["admin", "manager"],
   "POST /organizations/{org_id}/certificates/{cert_id}/revoke": ["admin"],
   "GET /organizations/{org_id}/certificates/{cert_id}/private-key/plain": ["admin"],
   "GET /api/check-consistency": ["admin", "manager"]

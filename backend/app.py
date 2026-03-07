@@ -4,7 +4,7 @@ Provides web interface for certificate management operations
 """
 
 from fastapi import FastAPI, Request, Form, Query, HTTPException
-from fastapi.responses import HTMLResponse, FileResponse, Response, RedirectResponse, JSONResponse
+from fastapi.responses import HTMLResponse, Response, RedirectResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from contextlib import asynccontextmanager
@@ -16,6 +16,7 @@ import tempfile
 import sys
 import os
 import uuid
+import re
 from cryptography import x509
 from cryptography.x509.oid import NameOID
 from cryptography.hazmat.primitives import serialization
@@ -276,9 +277,9 @@ async def security_headers_middleware(request: Request, call_next):
     # Content Security Policy: allow self resources only
     response.headers["Content-Security-Policy"] = (
         "default-src 'self'; "
-        "script-src 'self' 'unsafe-inline' https://cdn.tailwindcss.com; "
-        "style-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net; "
-        "img-src 'self' data:; font-src 'self' https://cdn.jsdelivr.net; connect-src 'self'"
+        "script-src 'self' 'unsafe-inline'; "
+        "style-src 'self' 'unsafe-inline'; "
+        "img-src 'self' data:; font-src 'self'; connect-src 'self'"
     )
 
     # HSTS for HTTPS connections
@@ -492,6 +493,11 @@ def _handle_renewal_revocation(org: dict, org_id: int, renewal_of_cert_id: str) 
         old_cert = db.get_certificate_by_id_for_organization(old_cert_id, org_id)
         if old_cert:
             db.revoke_certificate(old_cert_id, "superseded")
+            # Audit: old cert superseded by renewal
+            try:
+                db.log_certificate_operation(old_cert_id, "renewed", None, json.dumps({"superseded_by": "renewal"}))
+            except Exception as e:
+                logger.warning(f"Audit log failed (non-fatal): {e}")
             if old_cert["issuer_cert_id"]:
                 issuer_cert = db.get_certificate_by_id_for_organization(old_cert["issuer_cert_id"], org_id)
                 if issuer_cert:
@@ -669,10 +675,17 @@ async def landing_page(request: Request):
 
         # Load UI configuration for timeline window (use cached value, set at startup line 110)
         ui_policy = request.app.state.ui_policy
-        expiration_days = ui_policy.get("dashboard", {}).get("expiration_warning_days", 90)
+        dashboard_policy = ui_policy.get("dashboard", {})
+        expiration_days = dashboard_policy.get("alert_window_days", 90)
+        warning_days = dashboard_policy.get("warning_days", 60)
+        critical_days = dashboard_policy.get("critical_days", 30)
 
         # Fetch expiring certificates for timeline
-        expiring_certs = db.get_expiring_certificates(days_ahead=expiration_days)
+        expiring_certs = db.get_expiring_certificates(
+            days_ahead=expiration_days,
+            critical_days=critical_days,
+            warning_days=warning_days
+        )
 
         return templates.TemplateResponse(
             "landing.html",
@@ -682,7 +695,10 @@ async def landing_page(request: Request):
                 "organizations": organizations,
                 "org_count": org_count,
                 "stats": cert_stats,
-                "expiring_certificates": expiring_certs
+                "expiring_certificates": expiring_certs,
+                "expiration_days": expiration_days,
+                "warning_days": warning_days,
+                "critical_days": critical_days
             }
         )
     except Exception as e:
@@ -841,7 +857,7 @@ async def health_check():
     }
 
 
-@app.get("/organizations")
+@app.get("/organizations", dependencies=[require_roles_config()])
 async def list_all_organizations():
     """List all organizations from the database"""
     try:
@@ -858,7 +874,7 @@ async def list_all_organizations():
         }
 
 
-@app.get("/organizations/{org_id}/manage", response_class=HTMLResponse)
+@app.get("/organizations/{org_id}/manage", response_class=HTMLResponse, dependencies=[require_roles_config()])
 async def manage_organization(request: Request, org_id: int):
     """
     Manage organization page - shows dashboard with organization statistics.
@@ -879,6 +895,12 @@ async def manage_organization(request: Request, org_id: int):
 
     # Always show dashboard
     try:
+        # Load UI policy for expiration thresholds
+        ui_policy = request.app.state.ui_policy
+        dashboard_policy = ui_policy.get("dashboard", {})
+        expiration_days = dashboard_policy.get("alert_window_days", 90)
+        critical_days = dashboard_policy.get("critical_days", 30)
+
         stats = db.get_organization_stats(org_id)
         certificates = db.list_certificates_by_organization(org_id)
         audit_logs = db.get_recent_audit_logs(org_id, limit=20)
@@ -895,6 +917,8 @@ async def manage_organization(request: Request, org_id: int):
                 "root_ca_exists": root_ca_exists,
                 "role": getattr(request.state, "role", "user"),
                 "ui_permissions": _build_ui_permissions(request, getattr(request.state, "role", "user")),
+                "expiration_days": expiration_days,
+                "critical_days": critical_days,
             },
         )
     except Exception as e:
@@ -942,6 +966,11 @@ async def create_certificate_page(request: Request, org_id: int):
     issuer_subject_map = _build_issuer_subject_map(org["org_dir"], issuers)
     locked_fields_end_entity = _policy_locked_fields("intermediate")
 
+    # Load DEFAULT_DAYS from policy for UI
+    root_policy = _load_role_policy("root")
+    intermediate_policy = _load_role_policy("intermediate")
+    server_policy = _load_role_policy("end-entity-server")
+
     return templates.TemplateResponse(
         "create_certificate.html",
         {
@@ -956,11 +985,14 @@ async def create_certificate_page(request: Request, org_id: int):
             "issuers": issuers,
             "issuer_subject_map_json": json.dumps(issuer_subject_map),
             "locked_fields_end_entity": locked_fields_end_entity,
+            "default_days_root": int(root_policy["DEFAULT_DAYS"]),
+            "default_days_intermediate": int(intermediate_policy["DEFAULT_DAYS"]),
+            "default_days_end_entity": int(server_policy["DEFAULT_DAYS"]),
         },
     )
 
 
-@app.get("/organizations/{org_id}/certificates/{cert_id}/popup", response_class=HTMLResponse)
+@app.get("/organizations/{org_id}/certificates/{cert_id}/popup", response_class=HTMLResponse, dependencies=[require_roles_config()])
 async def certificate_popup(request: Request, org_id: int, cert_id: int):
     """
     Popup page with certificate record details.
@@ -1014,6 +1046,9 @@ async def certificate_popup(request: Request, org_id: int, cert_id: int):
             "key_usage": key_usage,
             "extended_key_usages": ekus,
             "issuer_cert": issuer_cert,
+            "ui_permissions": _build_ui_permissions(
+                request, getattr(request.state, "role", "user")
+            ),
         },
     )
 
@@ -1345,7 +1380,7 @@ async def download_issuer_crl_bundle(org_id: int, issuer_name: str, issuer_cert_
 
 
 @app.get("/organizations/{org_id}/certificates/{cert_id}/download", dependencies=[require_roles_config()])
-async def download_certificate(org_id: int, cert_id: int, format: str = "pem"):
+async def download_certificate(request: Request, org_id: int, cert_id: int, format: str = "pem"):
     """
     Download certificate artifact in one of: pem, p12, chain.
     """
@@ -1366,6 +1401,12 @@ async def download_certificate(org_id: int, cert_id: int, format: str = "pem"):
             return Response(content="PEM file not found", status_code=404)
         # Decrypt and serve PEM content
         pem_content = file_crypto.read_encrypted(cert_path)
+        # Audit: PEM download
+        user_name = _get_request_user(request)
+        try:
+            db.log_certificate_operation(cert_id, "downloaded_pem", user_name, None)
+        except Exception as e:
+            logger.warning(f"Audit log failed (non-fatal): {e}")
         return Response(
             content=pem_content,
             media_type="application/x-pem-file",
@@ -1383,6 +1424,12 @@ async def download_certificate(org_id: int, cert_id: int, format: str = "pem"):
             return Response(content="PKCS12 file not found", status_code=404)
         # Decrypt and serve P12 content
         p12_content = file_crypto.read_encrypted(p12_path)
+        # Audit: P12 download
+        user_name = _get_request_user(request)
+        try:
+            db.log_certificate_operation(cert_id, "downloaded_p12", user_name, None)
+        except Exception as e:
+            logger.warning(f"Audit log failed (non-fatal): {e}")
         return Response(
             content=p12_content,
             media_type="application/x-pkcs12",
@@ -1393,6 +1440,12 @@ async def download_certificate(org_id: int, cert_id: int, format: str = "pem"):
         chain_content = _build_certificate_chain_pem(org, cert, org_id)
         if chain_content is None:
             return Response(content="Unable to build certificate chain", status_code=500)
+        # Audit: chain download
+        user_name = _get_request_user(request)
+        try:
+            db.log_certificate_operation(cert_id, "downloaded_chain", user_name, None)
+        except Exception as e:
+            logger.warning(f"Audit log failed (non-fatal): {e}")
         return Response(
             content=chain_content,
             media_type="application/x-pem-file",
@@ -1400,6 +1453,46 @@ async def download_certificate(org_id: int, cert_id: int, format: str = "pem"):
         )
 
     return Response(content="Unsupported format. Use pem, p12, or chain.", status_code=400)
+
+
+@app.get("/organizations/{org_id}/certificates/{cert_id}/p12-password", dependencies=[require_roles_config()])
+async def get_p12_password(request: Request, org_id: int, cert_id: int):
+    """Return the PKCS12 password for a client/email certificate."""
+    org = db.get_organization_by_id(org_id)
+    if not org:
+        return Response(content="Organization not found", status_code=404)
+
+    cert = db.get_certificate_by_id_for_organization(cert_id, org_id)
+    if not cert:
+        return Response(content="Certificate not found", status_code=404)
+
+    if cert["cert_type"] not in ("client", "email"):
+        return Response(content="PKCS12 is only available for client/email certificates", status_code=400)
+
+    org_dir = _resolve_org_path(org["org_dir"])
+    # Derive password path: certs/{base}.pem.enc → private/{base}.p12.pwd.enc
+    cert_path_obj = Path(cert["cert_path"])
+    file_base = cert_path_obj.name.replace(".pem.enc", "")
+    parts = list(cert_path_obj.parts)
+    private_parts = []
+    for part in parts:
+        if part == "certs":
+            private_parts.append("private")
+            break
+        private_parts.append(part)
+    p12_pwd_path = org_dir / Path(*private_parts) / f"{file_base}.p12.pwd.enc"
+
+    if not p12_pwd_path.exists():
+        return Response(content="P12 password file not found", status_code=404)
+
+    password = file_crypto.read_encrypted(p12_pwd_path).decode().strip()
+    # Audit: P12 password viewed
+    user_name = _get_request_user(request)
+    try:
+        db.log_certificate_operation(cert_id, "viewed_p12_password", user_name, None)
+    except Exception as e:
+        logger.warning(f"Audit log failed (non-fatal): {e}")
+    return {"password": password, "cert_name": cert["cert_name"]}
 
 
 @app.get("/organizations/{org_id}/certificates/{cert_id}/private-key/plain", dependencies=[require_roles_config()])
@@ -1552,6 +1645,17 @@ def _trigger_crl_regeneration(org: dict, issuer_id: int, issuer_cert: dict) -> N
                          "revocation_reason": r["revocation_reason"]}
                         for r in revoked_rows
                     ])
+
+                    # Audit: CRL generated
+                    try:
+                        db.log_certificate_operation(
+                            issuer_id,
+                            "crl_generated",
+                            None,
+                            json.dumps({"crl_id": crl_id, "crl_number": crl_number}),
+                        )
+                    except Exception as e:
+                        logger.warning(f"Audit log failed (non-fatal): {e}")
             except Exception as e:
                 logger.warning(f"CRL table insert failed (non-fatal): {e}")
         else:
@@ -1565,9 +1669,9 @@ def _trigger_crl_regeneration(org: dict, issuer_id: int, issuer_cert: dict) -> N
             temp_path.unlink(missing_ok=True)
 
 
-@app.get("/organizations/{org_id}/root-ca", response_class=HTMLResponse, dependencies=[require_roles_config()])
+@app.get("/organizations/{org_id}/root-ca", dependencies=[require_roles_config()])
 async def root_ca_page(request: Request, org_id: int):
-    """Render Root CA creation page for a specific organization."""
+    """Redirect to unified certificate creation page."""
     org = db.get_organization_by_id(org_id)
     if not org:
         return templates.TemplateResponse(
@@ -1591,14 +1695,7 @@ async def root_ca_page(request: Request, org_id: int):
             },
         )
 
-    return templates.TemplateResponse(
-        "root_ca.html",
-        {
-            "request": request,
-            "organization": org,
-            "result": None,
-        },
-    )
+    return RedirectResponse(f"/organizations/{org_id}/create-certificate", status_code=302)
 
 
 @app.post("/organizations/{org_id}/root-ca", response_class=HTMLResponse, dependencies=[require_roles_config()])
@@ -1642,16 +1739,21 @@ async def create_root_ca(
             },
         )
 
+    # Validate email format if provided
+    if email and not re.match(r"^[^@\s]+@[^@\s]+\.[^@\s]+$", email):
+        raise HTTPException(status_code=422, detail="Invalid email format.")
+
     org_dir = str(_resolve_org_path(org["org_dir"]))
     cert_name_clean = _sanitize_cert_name(cert_name)
     cert_uuid = str(uuid.uuid4())
     if not cert_name_clean:
         return templates.TemplateResponse(
-            "root_ca.html",
+            "error.html",
             {
                 "request": request,
-                "organization": org,
-                "result": {"status": "error", "message": "Invalid certificate name."},
+                "error_title": "Certificate Creation Failed",
+                "error_message": "Invalid certificate name.",
+                "org_name": org["name"],
             },
         )
 
@@ -1714,50 +1816,46 @@ async def create_root_ca(
         # Auto-revoke previous cert if this is a renewal
         _handle_renewal_revocation(org, org_id, renewal_of_cert_id)
 
-        return templates.TemplateResponse(
-            "root_ca.html",
-            {
-                "request": request,
-                "organization": org,
-                "result": {"status": "success", "output": create_output},
-            },
-        )
+        return RedirectResponse(f"/organizations/{org_id}/manage", status_code=303)
 
     except subprocess.CalledProcessError as e:
         logger.exception(f"Certificate creation subprocess failed for org_id={org_id}")
         return templates.TemplateResponse(
-            "root_ca.html",
+            "error.html",
             {
                 "request": request,
-                "organization": org,
-                "result": {"status": "error", "message": "Certificate creation process failed. Please contact an administrator."},
+                "error_title": "Certificate Creation Failed",
+                "error_message": "Certificate creation process failed. Please contact an administrator.",
+                "org_name": org["name"],
             },
         )
     except TimeoutError as e:
         logger.exception(f"Certificate creation subprocess timed out for org_id={org_id}")
         return templates.TemplateResponse(
-            "root_ca.html",
+            "error.html",
             {
                 "request": request,
-                "organization": org,
-                "result": {"status": "error", "message": "Certificate creation process timed out. Please try again."},
+                "error_title": "Certificate Creation Failed",
+                "error_message": "Certificate creation process timed out. Please try again.",
+                "org_name": org["name"],
             },
         )
     except Exception as e:
         logger.exception(f"Unexpected error creating root CA for org_id={org_id}")
         return templates.TemplateResponse(
-            "root_ca.html",
+            "error.html",
             {
                 "request": request,
-                "organization": org,
-                "result": {"status": "error", "message": "An unexpected error occurred. Please contact an administrator."},
+                "error_title": "Certificate Creation Failed",
+                "error_message": "An unexpected error occurred. Please contact an administrator.",
+                "org_name": org["name"],
             },
         )
 
 
-@app.get("/organizations/{org_id}/intermediate-ca", response_class=HTMLResponse, dependencies=[require_roles_config()])
+@app.get("/organizations/{org_id}/intermediate-ca", dependencies=[require_roles_config()])
 async def intermediate_ca_page(request: Request, org_id: int):
-    """Render Intermediate CA creation page for a specific organization."""
+    """Redirect to unified certificate creation page."""
     org = db.get_organization_by_id(org_id)
     if not org:
         return templates.TemplateResponse(
@@ -1769,29 +1867,7 @@ async def intermediate_ca_page(request: Request, org_id: int):
             },
         )
 
-    root_ca = get_latest_active_root_ca_name(org_id)
-    issuer_subject_fields = {}
-    locked_fields = []
-    if root_ca:
-        layout = PkiLayout()
-        root_cert = db.get_latest_certificate_by_name_and_type(org_id, root_ca, "root")
-        root_artifact = root_cert["cert_uuid"] if root_cert and root_cert.get("cert_uuid") else root_ca
-        cert_path = _resolve_org_path(org["org_dir"]) / layout.root_dirname / layout.certs_dirname / f"{root_artifact}.pem.enc"
-        if cert_path.exists():
-            issuer_subject_fields = _read_cert_subject_fields(cert_path)
-        locked_fields = _policy_locked_fields("root")
-
-    return templates.TemplateResponse(
-        "intermediate_ca.html",
-        {
-            "request": request,
-            "organization": org,
-            "root_ca": root_ca,
-            "issuer_subject_fields": issuer_subject_fields,
-            "locked_fields": locked_fields,
-            "result": None,
-        },
-    )
+    return RedirectResponse(f"/organizations/{org_id}/create-certificate", status_code=302)
 
 
 @app.post("/organizations/{org_id}/intermediate-ca", response_class=HTMLResponse, dependencies=[require_roles_config()])
@@ -1827,16 +1903,18 @@ async def create_intermediate_ca(
 
     if not root_ca:
         return templates.TemplateResponse(
-            "intermediate_ca.html",
+            "error.html",
             {
                 "request": request,
-                "organization": org,
-                "root_ca": None,
-                "issuer_subject_fields": {},
-                "locked_fields": [],
-                "result": {"status": "error", "message": "No Root CA found. Please create a Root CA first."},
+                "error_title": "Certificate Creation Failed",
+                "error_message": "No Root CA found. Please create a Root CA first.",
+                "org_name": org["name"],
             },
         )
+
+    # Validate email format if provided
+    if email and not re.match(r"^[^@\s]+@[^@\s]+\.[^@\s]+$", email):
+        raise HTTPException(status_code=422, detail="Invalid email format.")
 
     org_dir = str(_resolve_org_path(org["org_dir"]))
     layout = PkiLayout()
@@ -1854,14 +1932,12 @@ async def create_intermediate_ca(
 
     if not cert_name_clean:
         return templates.TemplateResponse(
-            "intermediate_ca.html",
+            "error.html",
             {
                 "request": request,
-                "organization": org,
-                "root_ca": root_ca,
-                "issuer_subject_fields": issuer_subject_fields,
-                "locked_fields": locked_fields,
-                "result": {"status": "error", "message": "Invalid certificate name."},
+                "error_title": "Certificate Creation Failed",
+                "error_message": "Invalid certificate name.",
+                "org_name": org["name"],
             },
         )
 
@@ -1947,62 +2023,46 @@ async def create_intermediate_ca(
         # Auto-revoke previous cert if this is a renewal
         _handle_renewal_revocation(org, org_id, renewal_of_cert_id)
 
-        return templates.TemplateResponse(
-            "intermediate_ca.html",
-            {
-                "request": request,
-                "organization": org,
-                "root_ca": root_ca,
-                "issuer_subject_fields": issuer_subject_fields,
-                "locked_fields": locked_fields,
-                "result": {"status": "success", "output": create_output},
-            },
-        )
+        return RedirectResponse(f"/organizations/{org_id}/manage", status_code=303)
 
     except subprocess.CalledProcessError as e:
         logger.exception(f"Certificate creation subprocess failed for org_id={org_id}")
         return templates.TemplateResponse(
-            "intermediate_ca.html",
+            "error.html",
             {
                 "request": request,
-                "organization": org,
-                "root_ca": root_ca,
-                "issuer_subject_fields": issuer_subject_fields,
-                "locked_fields": locked_fields,
-                "result": {"status": "error", "message": "Certificate creation process failed. Please contact an administrator."},
+                "error_title": "Certificate Creation Failed",
+                "error_message": "Certificate creation process failed. Please contact an administrator.",
+                "org_name": org["name"],
             },
         )
     except TimeoutError as e:
         logger.exception(f"Certificate creation subprocess timed out for org_id={org_id}")
         return templates.TemplateResponse(
-            "intermediate_ca.html",
+            "error.html",
             {
                 "request": request,
-                "organization": org,
-                "root_ca": root_ca,
-                "issuer_subject_fields": issuer_subject_fields,
-                "locked_fields": locked_fields,
-                "result": {"status": "error", "message": "Certificate creation process timed out. Please try again."},
+                "error_title": "Certificate Creation Failed",
+                "error_message": "Certificate creation process timed out. Please try again.",
+                "org_name": org["name"],
             },
         )
     except Exception as e:
         logger.exception(f"Unexpected error creating intermediate CA for org_id={org_id}")
         return templates.TemplateResponse(
-            "intermediate_ca.html",
+            "error.html",
             {
                 "request": request,
-                "organization": org,
-                "root_ca": root_ca,
-                "issuer_subject_fields": issuer_subject_fields,
-                "locked_fields": locked_fields,
-                "result": {"status": "error", "message": "An unexpected error occurred. Please contact an administrator."},
+                "error_title": "Certificate Creation Failed",
+                "error_message": "An unexpected error occurred. Please contact an administrator.",
+                "org_name": org["name"],
             },
         )
 
 
-@app.get("/organizations/{org_id}/end-entity", response_class=HTMLResponse, dependencies=[require_roles_config()])
+@app.get("/organizations/{org_id}/end-entity", dependencies=[require_roles_config()])
 async def end_entity_page(request: Request, org_id: int):
-    """Render End-Entity certificate creation page for a specific organization."""
+    """Redirect to unified certificate creation page."""
     org = db.get_organization_by_id(org_id)
     if not org:
         return templates.TemplateResponse(
@@ -2014,21 +2074,7 @@ async def end_entity_page(request: Request, org_id: int):
             },
         )
 
-    issuers = list_end_entity_issuers(org["org_dir"])
-    issuer_subject_map = _build_issuer_subject_map(org["org_dir"], issuers)
-    locked_fields = _policy_locked_fields("intermediate")
-
-    return templates.TemplateResponse(
-        "end_entity.html",
-        {
-            "request": request,
-            "organization": org,
-            "issuers": issuers,
-            "issuer_subject_map_json": json.dumps(issuer_subject_map),
-            "locked_fields": locked_fields,
-            "result": None,
-        },
-    )
+    return RedirectResponse(f"/organizations/{org_id}/create-certificate", status_code=302)
 
 
 @app.post("/organizations/{org_id}/end-entity", response_class=HTMLResponse, dependencies=[require_roles_config()])
@@ -2074,6 +2120,10 @@ async def create_end_entity(
             },
         )
 
+    # Validate email format if provided
+    if email and not re.match(r"^[^@\s]+@[^@\s]+\.[^@\s]+$", email):
+        raise HTTPException(status_code=422, detail="Invalid email format.")
+
     org_dir = str(_resolve_org_path(org["org_dir"]))
     cert_name_clean = _sanitize_cert_name(cert_name)
     cert_uuid = str(uuid.uuid4())
@@ -2081,52 +2131,36 @@ async def create_end_entity(
     issuer_type_clean = str(issuer_type).strip().lower()
 
     if not cert_name_clean:
-        issuers = list_end_entity_issuers(org["org_dir"])
-        issuer_subject_map = _build_issuer_subject_map(org["org_dir"], issuers)
-        locked_fields = _policy_locked_fields("intermediate")
-
         return templates.TemplateResponse(
-            "end_entity.html",
+            "error.html",
             {
                 "request": request,
-                "organization": org,
-                "issuers": issuers,
-                "issuer_subject_map_json": json.dumps(issuer_subject_map),
-                "locked_fields": locked_fields,
-                "result": {"status": "error", "message": "Invalid certificate name."},
+                "error_title": "Certificate Creation Failed",
+                "error_message": "Invalid certificate name.",
+                "org_name": org["name"],
             },
         )
 
     if issuer_type_clean != "intermediate":
-        issuers = list_end_entity_issuers(org["org_dir"])
-        issuer_subject_map = _build_issuer_subject_map(org["org_dir"], issuers)
-        locked_fields = _policy_locked_fields("intermediate")
         return templates.TemplateResponse(
-            "end_entity.html",
+            "error.html",
             {
                 "request": request,
-                "organization": org,
-                "issuers": issuers,
-                "issuer_subject_map_json": json.dumps(issuer_subject_map),
-                "locked_fields": locked_fields,
-                "result": {"status": "error", "message": "End-entity certificates must be issued by an Intermediate CA."},
+                "error_title": "Certificate Creation Failed",
+                "error_message": "End-entity certificates must be issued by an Intermediate CA.",
+                "org_name": org["name"],
             },
         )
 
     available_issuers = {issuer["name"] for issuer in list_end_entity_issuers(org["org_dir"])}
     if issuer_name_clean not in available_issuers:
-        issuers = list_end_entity_issuers(org["org_dir"])
-        issuer_subject_map = _build_issuer_subject_map(org["org_dir"], issuers)
-        locked_fields = _policy_locked_fields("intermediate")
         return templates.TemplateResponse(
-            "end_entity.html",
+            "error.html",
             {
                 "request": request,
-                "organization": org,
-                "issuers": issuers,
-                "issuer_subject_map_json": json.dumps(issuer_subject_map),
-                "locked_fields": locked_fields,
-                "result": {"status": "error", "message": "Selected issuer is not available."},
+                "error_title": "Certificate Creation Failed",
+                "error_message": "Selected issuer is not available.",
+                "org_name": org["name"],
             },
         )
 
@@ -2137,18 +2171,13 @@ async def create_end_entity(
         cert_type="intermediate",
     )
     if not issuer_cert:
-        issuers = list_end_entity_issuers(org["org_dir"])
-        issuer_subject_map = _build_issuer_subject_map(org["org_dir"], issuers)
-        locked_fields = _policy_locked_fields("intermediate")
         return templates.TemplateResponse(
-            "end_entity.html",
+            "error.html",
             {
                 "request": request,
-                "organization": org,
-                "issuers": issuers,
-                "issuer_subject_map_json": json.dumps(issuer_subject_map),
-                "locked_fields": locked_fields,
-                "result": {"status": "error", "message": "Issuer certificate not found."},
+                "error_title": "Certificate Creation Failed",
+                "error_message": "Issuer certificate not found.",
+                "org_name": org["name"],
             },
         )
     # Intermediate folders use cert_name, files use UUID
@@ -2227,71 +2256,39 @@ async def create_end_entity(
         # Auto-revoke previous cert if this is a renewal
         _handle_renewal_revocation(org, org_id, renewal_of_cert_id)
 
-        issuers = list_end_entity_issuers(org["org_dir"])
-        issuer_subject_map = _build_issuer_subject_map(org["org_dir"], issuers)
-        locked_fields = _policy_locked_fields("intermediate")
-
-        return templates.TemplateResponse(
-            "end_entity.html",
-            {
-                "request": request,
-                "organization": org,
-                "issuers": issuers,
-                "issuer_subject_map_json": json.dumps(issuer_subject_map),
-                "locked_fields": locked_fields,
-                "result": {"status": "success", "output": create_output},
-            },
-        )
+        return RedirectResponse(f"/organizations/{org_id}/manage", status_code=303)
 
     except subprocess.CalledProcessError as e:
         logger.exception(f"Certificate creation subprocess failed for org_id={org_id}")
-        issuers = list_end_entity_issuers(org["org_dir"])
-        issuer_subject_map = _build_issuer_subject_map(org["org_dir"], issuers)
-        locked_fields = _policy_locked_fields("intermediate")
-
         return templates.TemplateResponse(
-            "end_entity.html",
+            "error.html",
             {
                 "request": request,
-                "organization": org,
-                "issuers": issuers,
-                "issuer_subject_map_json": json.dumps(issuer_subject_map),
-                "locked_fields": locked_fields,
-                "result": {"status": "error", "message": "Certificate creation process failed. Please contact an administrator."},
+                "error_title": "Certificate Creation Failed",
+                "error_message": "Certificate creation process failed. Please contact an administrator.",
+                "org_name": org["name"],
             },
         )
     except TimeoutError as e:
         logger.exception(f"Certificate creation subprocess timed out for org_id={org_id}")
-        issuers = list_end_entity_issuers(org["org_dir"])
-        issuer_subject_map = _build_issuer_subject_map(org["org_dir"], issuers)
-        locked_fields = _policy_locked_fields("intermediate")
-
         return templates.TemplateResponse(
-            "end_entity.html",
+            "error.html",
             {
                 "request": request,
-                "organization": org,
-                "issuers": issuers,
-                "issuer_subject_map_json": json.dumps(issuer_subject_map),
-                "locked_fields": locked_fields,
-                "result": {"status": "error", "message": "Certificate creation process timed out. Please try again."},
+                "error_title": "Certificate Creation Failed",
+                "error_message": "Certificate creation process timed out. Please try again.",
+                "org_name": org["name"],
             },
         )
     except Exception as e:
         logger.exception(f"Unexpected error creating end-entity certificate for org_id={org_id}")
-        issuers = list_end_entity_issuers(org["org_dir"])
-        issuer_subject_map = _build_issuer_subject_map(org["org_dir"], issuers)
-        locked_fields = _policy_locked_fields("intermediate")
-
         return templates.TemplateResponse(
-            "end_entity.html",
+            "error.html",
             {
                 "request": request,
-                "organization": org,
-                "issuers": issuers,
-                "issuer_subject_map_json": json.dumps(issuer_subject_map),
-                "locked_fields": locked_fields,
-                "result": {"status": "error", "message": "An unexpected error occurred. Please contact an administrator."},
+                "error_title": "Certificate Creation Failed",
+                "error_message": "An unexpected error occurred. Please contact an administrator.",
+                "org_name": org["name"],
             },
         )
 
@@ -2439,7 +2436,7 @@ async def revoke_certificate(
     )
 
 
-@app.get("/api/check-consistency", response_class=Response)
+@app.get("/api/check-consistency", response_class=Response, dependencies=[require_roles_config()])
 async def check_consistency():
     """
     Run consistency checks between database and PEM files.

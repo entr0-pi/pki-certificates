@@ -3,114 +3,471 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Certificate {{ certificate.cert_name }} - Details</title>
-    <link href="https://cdn.jsdelivr.net/npm/daisyui@4.6.0/dist/full.min.css" rel="stylesheet" type="text/css" />
-    <script src="https://cdn.tailwindcss.com"></script>
+    <title>{{ certificate.cert_name }} - Certificate Details</title>
+    <link href="/static/vendor/bundle.css" rel="stylesheet" type="text/css" />
+    <style>
+        .section-title {
+            font-size: 0.65rem;
+            font-weight: 700;
+            letter-spacing: 0.12em;
+            text-transform: uppercase;
+            opacity: 0.5;
+            margin-bottom: 0.75rem;
+        }
+        .kv-row {
+            display: flex;
+            align-items: baseline;
+            gap: 0.5rem;
+            padding: 0.35rem 0;
+            border-bottom: 1px solid hsl(var(--b3)/0.4);
+        }
+        .kv-row:last-child {
+            border-bottom: none;
+        }
+        .kv-label {
+            min-width: 9rem;
+            font-size: 0.78rem;
+            font-weight: 600;
+            opacity: 0.6;
+            flex-shrink: 0;
+        }
+        .kv-value {
+            font-size: 0.82rem;
+            word-break: break-all;
+        }
+        .copy-toast {
+            display: none;
+            font-size: 0.7rem;
+            color: hsl(var(--su));
+            margin-left: 0.25rem;
+        }
+    </style>
 </head>
-<body class="bg-base-200 min-h-screen p-4">
-    <div class="max-w-6xl mx-auto space-y-4">
-        <div class="card bg-base-100 shadow">
-            <div class="card-body">
-                <div class="flex items-center justify-between">
-                    <div>
-                        <h1 class="text-2xl font-semibold">{{ certificate.cert_name }}</h1>
-                        <p class="text-sm text-base-content/70">Organization: {{ organization.name }} | Type: {{ certificate.cert_type }}</p>
-                    </div>
-                    <div class="flex items-center gap-2">
-                        <div class="dropdown dropdown-end">
-                            <div tabindex="0" role="button" class="btn btn-sm btn-outline">Download</div>
-                            <ul tabindex="0" class="dropdown-content menu bg-base-100 rounded-box z-[1] w-56 p-2 shadow border border-base-300">
-                                <li><a href="/organizations/{{ organization.id }}/certificates/{{ certificate.id }}/download?format=pem">PEM Certificate</a></li>
-                                <li><a href="/organizations/{{ organization.id }}/certificates/{{ certificate.id }}/download?format=p12">PKCS12 Bundle</a></li>
-                                <li><a href="/organizations/{{ organization.id }}/certificates/{{ certificate.id }}/download?format=chain">Full Chain</a></li>
-                            </ul>
+<body class="bg-base-200 min-h-screen p-4 md:p-6">
+    {% set perms = ui_permissions if ui_permissions is defined else {} %}
+    <div class="max-w-3xl mx-auto space-y-5">
+        <div class="card bg-base-100 shadow-xl">
+            <div class="card-body p-5">
+                <div class="flex items-start gap-4">
+                    <div class="flex-shrink-0 mt-0.5">
+                        {% if certificate.cert_type == 'root_ca' %}
+                        <div class="w-11 h-11 rounded-xl bg-primary/10 flex items-center justify-center">
+                            <svg xmlns="http://www.w3.org/2000/svg" class="w-6 h-6 text-primary" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.8">
+                                <path stroke-linecap="round" stroke-linejoin="round" d="M9 12.75 11.25 15 15 9.75m-3-7.036A11.959 11.959 0 0 1 3.598 6 11.99 11.99 0 0 0 3 9.749c0 5.592 3.824 10.29 9 11.623 5.176-1.332 9-6.03 9-11.622 0-1.31-.21-2.571-.598-3.751h-.152c-3.196 0-6.1-1.248-8.25-3.285Z" />
+                            </svg>
                         </div>
-                        <button class="btn btn-sm" onclick="window.close()">Close</button>
+                        {% elif certificate.cert_type == 'intermediate_ca' %}
+                        <div class="w-11 h-11 rounded-xl bg-secondary/10 flex items-center justify-center">
+                            <svg xmlns="http://www.w3.org/2000/svg" class="w-6 h-6 text-secondary" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.8">
+                                <path stroke-linecap="round" stroke-linejoin="round" d="M13.19 8.688a4.5 4.5 0 0 1 1.242 7.244l-4.5 4.5a4.5 4.5 0 0 1-6.364-6.364l1.757-1.757m13.35-.622 1.757-1.757a4.5 4.5 0 0 0-6.364-6.364l-4.5 4.5a4.5 4.5 0 0 0 1.242 7.244" />
+                            </svg>
+                        </div>
+                        {% else %}
+                        <div class="w-11 h-11 rounded-xl bg-accent/10 flex items-center justify-center">
+                            <svg xmlns="http://www.w3.org/2000/svg" class="w-6 h-6 text-accent" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.8">
+                                <path stroke-linecap="round" stroke-linejoin="round" d="M19.5 14.25v-2.625a3.375 3.375 0 0 0-3.375-3.375h-1.5A1.125 1.125 0 0 1 13.5 7.125v-1.5a3.375 3.375 0 0 0-3.375-3.375H8.25m2.25 0H5.625c-.621 0-1.125.504-1.125 1.125v17.25c0 .621.504 1.125 1.125 1.125h12.75c.621 0 1.125-.504 1.125-1.125V11.25a9 9 0 0 0-9-9Z" />
+                            </svg>
+                        </div>
+                        {% endif %}
                     </div>
-                </div>
-                <div class="grid grid-cols-2 md:grid-cols-4 gap-3 text-sm mt-3">
-                    <div><span class="font-semibold">ID:</span> {{ certificate.id }}</div>
-                    <div><span class="font-semibold">Status:</span> {{ certificate.status }}</div>
-                    <div><span class="font-semibold">Type:</span> {{ certificate.cert_type }}</div>
-                    <div><span class="font-semibold">Issuer:</span> {% if issuer_cert %}{{ issuer_cert.cert_name }} (ID: {{ certificate.issuer_cert_id }}){% else %}{{ certificate.issuer_cert_id or "-" }}{% endif %}</div>
-                </div>
 
-                <div class="divider my-2"></div>
-                <div class="grid grid-cols-1 md:grid-cols-2 gap-2 text-sm">
-                    {% if certificate.serial_number %}<div><span class="font-semibold">Serial:</span> {{ certificate.serial_number }}</div>{% endif %}
-                    {% if certificate.subject_common_name %}<div><span class="font-semibold">CN:</span> {{ certificate.subject_common_name }}</div>{% endif %}
-                    {% if certificate.subject_country %}<div><span class="font-semibold">Country (C):</span> {{ certificate.subject_country }}</div>{% endif %}
-                    {% if certificate.subject_state %}<div><span class="font-semibold">State (ST):</span> {{ certificate.subject_state }}</div>{% endif %}
-                    {% if certificate.subject_locality %}<div><span class="font-semibold">Locality (L):</span> {{ certificate.subject_locality }}</div>{% endif %}
-                    {% if certificate.subject_organization %}<div><span class="font-semibold">Organization (O):</span> {{ certificate.subject_organization }}</div>{% endif %}
-                    {% if certificate.subject_org_unit %}<div><span class="font-semibold">Org Unit (OU):</span> {{ certificate.subject_org_unit }}</div>{% endif %}
-                    {% if certificate.subject_email %}<div><span class="font-semibold">Email:</span> {{ certificate.subject_email }}</div>{% endif %}
-                    {% if san_str and san_str != "-" %}<div class="md:col-span-2"><span class="font-semibold">SAN:</span> {{ san_str }}</div>{% endif %}
-                    {% if certificate.not_before %}<div><span class="font-semibold">Valid From:</span> {{ certificate.not_before }}</div>{% endif %}
-                    {% if certificate.not_after %}<div><span class="font-semibold">Valid To:</span> {{ certificate.not_after }}</div>{% endif %}
-                    {% if certificate.key_algorithm %}<div><span class="font-semibold">Key Algorithm:</span> {{ certificate.key_algorithm }}</div>{% endif %}
-                    {% if certificate.ec_curve %}<div><span class="font-semibold">EC Curve:</span> {{ certificate.ec_curve }}</div>{% endif %}
-                    {% if certificate.signature_hash %}<div><span class="font-semibold">Signature Hash:</span> {{ certificate.signature_hash }}</div>{% endif %}
-                </div>
-            </div>
-        </div>
-
-        <div class="card bg-base-100 shadow">
-            <div class="card-body">
-                <h2 class="card-title text-base">Extensions</h2>
-
-                <div class="space-y-4 text-sm">
-                    <div>
-                        <div class="font-semibold mb-1">Basic Constraints</div>
-                        {% if basic_constraints %}
-                        <div>
-                            <span class="badge badge-outline">CA: {{ "true" if basic_constraints.is_ca else "false" }}</span>
-                            {% if basic_constraints.is_ca and basic_constraints.path_length is not none %}
-                            <span class="badge badge-outline">path_length: {{ basic_constraints.path_length }}</span>
+                    <div class="flex-1 min-w-0">
+                        <div class="flex flex-wrap items-center gap-2 mb-0.5">
+                            <h1 class="text-xl font-semibold truncate">{{ certificate.cert_name }}</h1>
+                            {% set st = certificate.status | lower %}
+                            {% if st == 'active' %}
+                            <span class="badge badge-success badge-sm">Active</span>
+                            {% elif st == 'revoked' %}
+                            <span class="badge badge-error badge-sm">Revoked</span>
+                            {% elif st == 'expired' %}
+                            <span class="badge badge-warning badge-sm">Expired</span>
+                            {% elif st == 'pending' %}
+                            <span class="badge badge-info badge-sm">Pending</span>
+                            {% else %}
+                            <span class="badge badge-outline badge-sm">{{ certificate.status }}</span>
+                            {% endif %}
+                            {% if certificate.cert_type == 'root_ca' %}
+                            <span class="badge badge-primary badge-outline badge-sm">Root CA</span>
+                            {% elif certificate.cert_type == 'intermediate_ca' %}
+                            <span class="badge badge-secondary badge-outline badge-sm">Intermediate CA</span>
+                            {% else %}
+                            <span class="badge badge-accent badge-outline badge-sm">{{ certificate.cert_type | replace('_', ' ') | title }}</span>
                             {% endif %}
                         </div>
-                        {% else %}
-                        <div class="text-base-content/60">-</div>
-                        {% endif %}
+                        <p class="text-xs text-base-content/55">
+                            {{ organization.name }}
+                            {% if issuer_cert %} · Issued by <span class="font-medium">{{ issuer_cert.cert_name }}</span>{% endif %}
+                            &nbsp;·&nbsp; ID #{{ certificate.id }}
+                        </p>
                     </div>
 
-                    <div>
-                        <div class="font-semibold mb-1">Key Usage</div>
-                        {% if key_usage %}
-                        <div class="flex flex-wrap gap-2">
-                            {% if key_usage.digital_signature %}<span class="badge">Digital Signature</span>{% endif %}
-                            {% if key_usage.content_commitment %}<span class="badge">Content Commitment</span>{% endif %}
-                            {% if key_usage.key_encipherment %}<span class="badge">Key Encipherment</span>{% endif %}
-                            {% if key_usage.data_encipherment %}<span class="badge">Data Encipherment</span>{% endif %}
-                            {% if key_usage.key_agreement %}<span class="badge">Key Agreement</span>{% endif %}
-                            {% if key_usage.key_cert_sign %}<span class="badge">Key Cert Sign</span>{% endif %}
-                            {% if key_usage.crl_sign %}<span class="badge">CRL Sign</span>{% endif %}
-                            {% if key_usage.encipher_only %}<span class="badge">Encipher Only</span>{% endif %}
-                            {% if key_usage.decipher_only %}<span class="badge">Decipher Only</span>{% endif %}
-                        </div>
-                        {% else %}
-                        <div class="text-base-content/60">-</div>
-                        {% endif %}
-                    </div>
-
-                    <div>
-                        <div class="font-semibold mb-1">Extended Key Usage</div>
-                        {% if extended_key_usages %}
-                        <div class="flex flex-wrap gap-2">
-                            {% for eku in extended_key_usages %}
-                            <span class="badge badge-outline">{{ eku.eku_name }}</span>
-                            {% endfor %}
-                        </div>
-                        {% else %}
-                        <div class="text-base-content/60">-</div>
-                        {% endif %}
-                    </div>
+                    <button class="btn btn-ghost btn-sm btn-square flex-shrink-0" onclick="window.close()" title="Close">
+                        <svg xmlns="http://www.w3.org/2000/svg" class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                            <path stroke-linecap="round" stroke-linejoin="round" d="M6 18 18 6M6 6l12 12" />
+                        </svg>
+                    </button>
                 </div>
             </div>
         </div>
+
+        <div class="card bg-base-100 shadow">
+            <div class="card-body p-5">
+                <p class="section-title">Validity Period</p>
+                <div class="flex items-center justify-between text-xs text-base-content/60 mb-2">
+                    <span>{{ certificate.not_before or "—" }}</span>
+                    <span>{{ certificate.not_after or "—" }}</span>
+                </div>
+                <progress
+                    id="validity-bar"
+                    class="progress w-full"
+                    value="0"
+                    max="100"
+                    data-not-before="{{ certificate.not_before or '' }}"
+                    data-not-after="{{ certificate.not_after or '' }}"
+                ></progress>
+                <p id="validity-label" class="text-xs text-base-content/50 mt-1 text-right"></p>
+            </div>
+        </div>
+
+        <div class="card bg-base-100 shadow">
+            <div class="card-body p-5">
+                <p class="section-title">Subject Details</p>
+                <div class="bg-base-200 rounded-box px-4 py-1">
+                    {% if certificate.serial_number %}
+                    <div class="kv-row">
+                        <span class="kv-label">Serial Number</span>
+                        <span class="kv-value font-mono text-xs flex-1">{{ certificate.serial_number }}</span>
+                        <button
+                            class="btn btn-ghost btn-xs btn-square ml-1 opacity-50 hover:opacity-100"
+                            title="Copy serial number"
+                            onclick="copySerial('{{ certificate.serial_number | escape }}')"
+                        >
+                            <svg xmlns="http://www.w3.org/2000/svg" class="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                                <path stroke-linecap="round" stroke-linejoin="round" d="M15.666 3.888A2.25 2.25 0 0 0 13.5 2.25h-3c-1.03 0-1.9.693-2.166 1.638m7.332 0c.055.194.084.4.084.612v0a.75.75 0 0 1-.75.75H9a.75.75 0 0 1-.75-.75v0c0-.212.03-.418.084-.612m7.332 0c.646.049 1.288.11 1.927.184 1.1.128 1.907 1.077 1.907 2.185V19.5a2.25 2.25 0 0 1-2.25 2.25H6.75A2.25 2.25 0 0 1 4.5 19.5V6.257c0-1.108.806-2.057 1.907-2.185a48.208 48.208 0 0 1 1.927-.184" />
+                            </svg>
+                        </button>
+                        <span class="copy-toast" id="copy-toast-serial">Copied!</span>
+                    </div>
+                    {% endif %}
+
+                    {% if certificate.subject_common_name %}
+                    <div class="kv-row">
+                        <span class="kv-label">Common Name (CN)</span>
+                        <span class="kv-value">{{ certificate.subject_common_name }}</span>
+                    </div>
+                    {% endif %}
+                    {% if certificate.subject_organization %}
+                    <div class="kv-row">
+                        <span class="kv-label">Organization (O)</span>
+                        <span class="kv-value">{{ certificate.subject_organization }}</span>
+                    </div>
+                    {% endif %}
+                    {% if certificate.subject_org_unit %}
+                    <div class="kv-row">
+                        <span class="kv-label">Org Unit (OU)</span>
+                        <span class="kv-value">{{ certificate.subject_org_unit }}</span>
+                    </div>
+                    {% endif %}
+                    {% if certificate.subject_country %}
+                    <div class="kv-row">
+                        <span class="kv-label">Country (C)</span>
+                        <span class="kv-value">{{ certificate.subject_country }}</span>
+                    </div>
+                    {% endif %}
+                    {% if certificate.subject_state %}
+                    <div class="kv-row">
+                        <span class="kv-label">State (ST)</span>
+                        <span class="kv-value">{{ certificate.subject_state }}</span>
+                    </div>
+                    {% endif %}
+                    {% if certificate.subject_locality %}
+                    <div class="kv-row">
+                        <span class="kv-label">Locality (L)</span>
+                        <span class="kv-value">{{ certificate.subject_locality }}</span>
+                    </div>
+                    {% endif %}
+                    {% if certificate.subject_email %}
+                    <div class="kv-row">
+                        <span class="kv-label">Email</span>
+                        <span class="kv-value">{{ certificate.subject_email }}</span>
+                    </div>
+                    {% endif %}
+                    {% if san_str and san_str != "-" %}
+                    <div class="kv-row">
+                        <span class="kv-label">SAN</span>
+                        <span class="kv-value text-xs">{{ san_str }}</span>
+                    </div>
+                    {% endif %}
+                </div>
+            </div>
+        </div>
+
+        {% if certificate.key_algorithm or certificate.ec_curve or certificate.signature_hash %}
+        <div class="card bg-base-100 shadow">
+            <div class="card-body p-5">
+                <p class="section-title">Cryptography</p>
+                <div class="flex flex-wrap gap-2">
+                    {% if certificate.key_algorithm %}
+                    <div class="bg-base-200 rounded-box px-3 py-2 text-xs">
+                        <span class="opacity-55 mr-1">Algorithm</span>
+                        <span class="font-semibold">{{ certificate.key_algorithm }}</span>
+                    </div>
+                    {% endif %}
+                    {% if certificate.ec_curve %}
+                    <div class="bg-base-200 rounded-box px-3 py-2 text-xs">
+                        <span class="opacity-55 mr-1">Curve</span>
+                        <span class="font-semibold">{{ certificate.ec_curve }}</span>
+                    </div>
+                    {% endif %}
+                    {% if certificate.signature_hash %}
+                    <div class="bg-base-200 rounded-box px-3 py-2 text-xs">
+                        <span class="opacity-55 mr-1">Hash</span>
+                        <span class="font-semibold">{{ certificate.signature_hash }}</span>
+                    </div>
+                    {% endif %}
+                </div>
+            </div>
+        </div>
+        {% endif %}
+
+        <div class="card bg-base-100 shadow">
+            <div class="card-body p-5 space-y-5">
+                <p class="section-title">X.509 Extensions</p>
+
+                <div>
+                    <p class="text-xs font-semibold opacity-60 mb-2">Basic Constraints</p>
+                    {% if basic_constraints %}
+                    <div class="flex flex-wrap gap-2">
+                        {% if basic_constraints.is_ca %}
+                        <span class="badge badge-primary badge-sm">CA: true</span>
+                        {% if basic_constraints.path_length is not none %}
+                        <span class="badge badge-outline badge-sm">Path Length: {{ basic_constraints.path_length }}</span>
+                        {% else %}
+                        <span class="badge badge-outline badge-sm">Path Length: unlimited</span>
+                        {% endif %}
+                        {% else %}
+                        <span class="badge badge-outline badge-sm">CA: false</span>
+                        {% endif %}
+                    </div>
+                    {% else %}
+                    <span class="text-xs opacity-40">Not set</span>
+                    {% endif %}
+                </div>
+
+                <div>
+                    <p class="text-xs font-semibold opacity-60 mb-2">Key Usage</p>
+                    {% if key_usage %}
+                    <div class="flex flex-wrap gap-1.5">
+                        {% if key_usage.digital_signature %}<span class="badge badge-success badge-sm">Digital Signature</span>{% endif %}
+                        {% if key_usage.content_commitment %}<span class="badge badge-success badge-sm">Content Commitment</span>{% endif %}
+                        {% if key_usage.key_encipherment %}<span class="badge badge-success badge-sm">Key Encipherment</span>{% endif %}
+                        {% if key_usage.data_encipherment %}<span class="badge badge-success badge-sm">Data Encipherment</span>{% endif %}
+                        {% if key_usage.key_agreement %}<span class="badge badge-success badge-sm">Key Agreement</span>{% endif %}
+                        {% if key_usage.key_cert_sign %}<span class="badge badge-warning badge-sm">Key Cert Sign</span>{% endif %}
+                        {% if key_usage.crl_sign %}<span class="badge badge-warning badge-sm">CRL Sign</span>{% endif %}
+                        {% if key_usage.encipher_only %}<span class="badge badge-info badge-sm">Encipher Only</span>{% endif %}
+                        {% if key_usage.decipher_only %}<span class="badge badge-info badge-sm">Decipher Only</span>{% endif %}
+                    </div>
+                    {% else %}
+                    <span class="text-xs opacity-40">Not set</span>
+                    {% endif %}
+                </div>
+
+                <div>
+                    <p class="text-xs font-semibold opacity-60 mb-2">Extended Key Usage</p>
+                    {% if extended_key_usages %}
+                    <div class="flex flex-wrap gap-1.5">
+                        {% for eku in extended_key_usages %}
+                        <span class="badge badge-outline badge-sm">{{ eku.eku_name }}</span>
+                        {% endfor %}
+                    </div>
+                    {% else %}
+                    <span class="text-xs opacity-40">Not set</span>
+                    {% endif %}
+                </div>
+            </div>
+        </div>
+
+        {% if perms.get("can_download_cert", False) %}
+        <div class="card bg-base-100 shadow">
+            <div class="card-body p-5">
+                <p class="section-title">Download</p>
+                <div class="grid grid-cols-1 sm:grid-cols-{{ 3 if certificate.cert_type in ['client', 'email'] else 2 }} gap-3 mb-4">
+                    <div class="bg-base-200 rounded-box p-4">
+                        <p class="font-semibold text-sm">PEM Certificate</p>
+                        <p class="text-xs text-base-content/55 mt-0.5">Public certificate in Base64 PEM format. Use for web servers and most tools.</p>
+                    </div>
+
+                    {% if certificate.cert_type in ["client", "email"] %}
+                    <div class="bg-base-200 rounded-box p-4">
+                        <p class="font-semibold text-sm">PKCS#12 Bundle</p>
+                        <p class="text-xs text-base-content/55 mt-0.5">Certificate + private key in a password-protected binary bundle (.p12/.pfx).</p>
+                    </div>
+                    {% endif %}
+
+                    <div class="bg-base-200 rounded-box p-4">
+                        <p class="font-semibold text-sm">Full Chain</p>
+                        <p class="text-xs text-base-content/55 mt-0.5">Certificate + all intermediate CAs concatenated. Required for TLS chain validation.</p>
+                    </div>
+                </div>
+                <div class="flex gap-3 flex-wrap sm:flex-nowrap">
+                    <a href="/organizations/{{ organization.id }}/certificates/{{ certificate.id }}/download?format=pem" class="btn btn-primary btn-sm flex-1">
+                        <svg xmlns="http://www.w3.org/2000/svg" class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                            <path stroke-linecap="round" stroke-linejoin="round" d="M3 16.5v2.25A2.25 2.25 0 0 0 5.25 21h13.5A2.25 2.25 0 0 0 21 18.75V16.5M16.5 12 12 16.5m0 0L7.5 12m4.5 4.5V3" />
+                        </svg>
+                        Download PEM
+                    </a>
+
+                    {% if certificate.cert_type in ["client", "email"] %}
+                    <button type="button" class="btn btn-secondary btn-sm flex-1" onclick="showP12Password({{ organization.id }}, {{ certificate.id }})">
+                        <svg xmlns="http://www.w3.org/2000/svg" class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                            <path stroke-linecap="round" stroke-linejoin="round" d="M3 16.5v2.25A2.25 2.25 0 0 0 5.25 21h13.5A2.25 2.25 0 0 0 21 18.75V16.5M16.5 12 12 16.5m0 0L7.5 12m4.5 4.5V3" />
+                        </svg>
+                        Download P12
+                    </button>
+                    {% endif %}
+
+                    <a href="/organizations/{{ organization.id }}/certificates/{{ certificate.id }}/download?format=chain" class="btn btn-accent btn-sm flex-1">
+                        <svg xmlns="http://www.w3.org/2000/svg" class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                            <path stroke-linecap="round" stroke-linejoin="round" d="M3 16.5v2.25A2.25 2.25 0 0 0 5.25 21h13.5A2.25 2.25 0 0 0 21 18.75V16.5M16.5 12 12 16.5m0 0L7.5 12m4.5 4.5V3" />
+                        </svg>
+                        Download Chain
+                    </a>
+                </div>
+            </div>
+        </div>
+        {% endif %}
+
+        <div class="pb-10"></div>
     </div>
+
+    <script>
+    function parseUtcTimestamp(raw) {
+        if (!raw) {
+            return null;
+        }
+
+        var normalized = String(raw).trim().replace(" ", "T");
+        var match = normalized.match(
+            /^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2}):(\d{2})$/
+        );
+        if (match) {
+            return new Date(Date.UTC(
+                Number(match[1]),
+                Number(match[2]) - 1,
+                Number(match[3]),
+                Number(match[4]),
+                Number(match[5]),
+                Number(match[6])
+            ));
+        }
+
+        var parsed = new Date(normalized);
+        if (Number.isNaN(parsed.getTime())) {
+            return null;
+        }
+        return parsed;
+    }
+
+    (function () {
+        var bar = document.getElementById("validity-bar");
+        var lbl = document.getElementById("validity-label");
+        if (!bar || !lbl) {
+            return;
+        }
+
+        var notBefore = bar.getAttribute("data-not-before");
+        var notAfter = bar.getAttribute("data-not-after");
+        if (!notBefore || !notAfter) {
+            lbl.textContent = "Validity dates unavailable";
+            return;
+        }
+
+        var start = parseUtcTimestamp(notBefore);
+        var end = parseUtcTimestamp(notAfter);
+        if (!start || !end || end <= start) {
+            lbl.textContent = "Validity dates unavailable";
+            return;
+        }
+
+        var now = new Date();
+        var total = end - start;
+        var used = now - start;
+        var pct = Math.max(0, Math.min(100, (used / total) * 100));
+        bar.value = pct;
+
+        var daysLeft = Math.ceil((end - now) / 86400000);
+        if (now >= end) {
+            bar.className = "progress progress-error w-full";
+            lbl.textContent = "Expired";
+            return;
+        }
+
+        if (now < start) {
+            bar.className = "progress progress-info w-full";
+            lbl.textContent = "Not yet valid";
+            return;
+        }
+
+        if (pct >= 75) {
+            bar.className = "progress progress-warning w-full";
+        } else {
+            bar.className = "progress progress-success w-full";
+        }
+        lbl.textContent = daysLeft + " day" + (daysLeft !== 1 ? "s" : "") + " remaining";
+    })();
+
+    function showCopyToast(message) {
+        var toast = document.getElementById("copy-toast-serial");
+        if (!toast) {
+            return;
+        }
+        toast.textContent = message;
+        toast.style.display = "inline";
+        setTimeout(function () {
+            toast.style.display = "none";
+            toast.textContent = "Copied!";
+        }, 2000);
+    }
+
+    function copySerial(serial) {
+        if (!navigator.clipboard || !navigator.clipboard.writeText) {
+            showCopyToast("Clipboard unavailable");
+            return;
+        }
+
+        navigator.clipboard.writeText(serial).then(function () {
+            showCopyToast("Copied!");
+        }).catch(function () {
+            showCopyToast("Copy failed");
+        });
+    }
+
+    </script>
+
+    <!-- P12 Password Modal -->
+    <dialog id="p12PasswordModal" class="modal">
+        <div class="modal-box max-w-sm">
+            <h3 class="font-semibold text-lg mb-1">PKCS#12 Password</h3>
+            <p class="text-sm text-base-content/70 mb-4">
+                Copy the password before downloading — you will need it to open the .p12 file.
+            </p>
+            <div class="flex items-center gap-2 bg-base-200 rounded-box p-3 mb-4">
+                <code id="p12Password" class="flex-1 font-mono text-sm break-all"></code>
+                <button type="button" class="btn btn-sm btn-ghost" onclick="copyP12Password()">
+                    Copy
+                </button>
+            </div>
+            <div id="p12CopyFeedback" class="text-xs text-success mb-3 hidden">Copied to clipboard!</div>
+            <div class="modal-action">
+                <button type="button" class="btn btn-ghost" onclick="p12PasswordModal.close()">Cancel</button>
+                <a id="p12DownloadLink" href="#" class="btn btn-secondary">Download P12</a>
+            </div>
+        </div>
+        <form method="dialog" class="modal-backdrop"><button>close</button></form>
+    </dialog>
+
+    <script src="/static/p12-password-modal.js"></script>
     <script src="/static/theme-toggle.js"></script>
 </body>
 </html>
-
-

@@ -1,0 +1,12 @@
+{
+  "name": "pki-certificates",
+  "private": true,
+  "scripts": {
+    "build:css": "tailwindcss -i ./frontend/static/src/input.css -o ./frontend/static/vendor/bundle.css --minify",
+    "watch:css": "tailwindcss -i ./frontend/static/src/input.css -o ./frontend/static/vendor/bundle.css --watch"
+  },
+  "devDependencies": {
+    "daisyui": "^4.6.0",
+    "tailwindcss": "^3.4.0"
+  }
+}

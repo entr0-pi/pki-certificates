@@ -205,20 +205,6 @@ CREATE INDEX idx_audit_timestamp ON certificate_audit_log(operation_timestamp);
 -- VIEWS
 -- ============================================================================
 
--- Certificate Chains View
-CREATE VIEW certificate_chains AS
-SELECT
-    c.id,
-    c.cert_name,
-    c.cert_type,
-    c.subject_common_name,
-    i.cert_name AS issuer_name,
-    i.subject_common_name AS issuer_common_name,
-    o.org_dir
-FROM certificates c
-LEFT JOIN certificates i ON c.issuer_cert_id = i.id
-JOIN organizations o ON c.organization_id = o.id;
-
 -- Certificate Summary View
 CREATE VIEW certificate_summary AS
 SELECT
@@ -243,50 +229,13 @@ FROM certificates c
 JOIN organizations o ON c.organization_id = o.id
 LEFT JOIN basic_constraints bc ON c.id = bc.certificate_id;
 
--- Certificates Expiring Soon View
-CREATE VIEW certificates_expiring_soon AS
-SELECT
-    o.org_dir,
-    c.cert_name,
-    c.cert_type,
-    c.subject_common_name,
-    c.not_after,
-    CAST(julianday(c.not_after) - julianday(CURRENT_TIMESTAMP) AS INTEGER) AS days_remaining
-FROM certificates c
-JOIN organizations o ON c.organization_id = o.id
-WHERE
-    c.status = 'active'
-    AND julianday(c.not_after) - julianday(CURRENT_TIMESTAMP) <= 30
-    AND julianday(c.not_after) - julianday(CURRENT_TIMESTAMP) >= 0
-ORDER BY c.not_after;
+-- ============================================================================
+-- SCHEMA VERSION
+-- ============================================================================
 
--- CA Hierarchy View
-CREATE VIEW ca_hierarchy AS
-WITH RECURSIVE cert_tree AS (
-    -- Root CAs (self-signed)
-    SELECT
-        id,
-        cert_name,
-        cert_type,
-        subject_common_name,
-        issuer_cert_id,
-        0 AS level,
-        CAST(cert_name AS TEXT) AS path
-    FROM certificates
-    WHERE issuer_cert_id IS NULL
+CREATE TABLE IF NOT EXISTS schema_version (
+    version     INTEGER NOT NULL,
+    applied_at  TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
 
-    UNION ALL
-
-    -- Child certificates
-    SELECT
-        c.id,
-        c.cert_name,
-        c.cert_type,
-        c.subject_common_name,
-        c.issuer_cert_id,
-        ct.level + 1,
-        ct.path || ' -> ' || c.cert_name
-    FROM certificates c
-    JOIN cert_tree ct ON c.issuer_cert_id = ct.id
-)
-SELECT * FROM cert_tree ORDER BY path;
+INSERT INTO schema_version (version) VALUES (1);

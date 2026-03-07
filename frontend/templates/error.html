@@ -3,9 +3,8 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Error - Organization Creation Failed</title>
-    <link href="https://cdn.jsdelivr.net/npm/daisyui@4.6.0/dist/full.min.css" rel="stylesheet" type="text/css" />
-    <script src="https://cdn.tailwindcss.com"></script>
+    <title>{{ error_title | default("Error") }}</title>
+    <link href="/static/vendor/bundle.css" rel="stylesheet" type="text/css" />
 </head>
 <body class="bg-base-200 min-h-screen p-6">
     <div class="container mx-auto max-w-3xl">
@@ -13,8 +12,8 @@
         <div class="card bg-base-100 shadow-xl mb-6">
             <div class="card-body">
                 <span class="uppercase tracking-[0.4em] text-xs text-base-content/60">The ultimate tool</span>
-                <h1 class="text-4xl sm:text-5xl font-semibold">Organization Creation Failed</h1>
-                <p class="text-lg text-base-content/70">We could not create the organization</p>
+                <h1 class="text-4xl sm:text-5xl font-semibold">{{ error_title | default("Error") }}</h1>
+                <p class="text-lg text-base-content/70">{{ error_subtitle | default("An error occurred. Please try again.") }}</p>
             </div>
         </div>
 

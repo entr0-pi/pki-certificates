@@ -21,7 +21,7 @@ Status labels:
 |---|---|---|
 | `organizations` | Implemented | Created/read/listed by app. |
 | `certificates` | Implemented | Primary certificate metadata store; issuance + revocation state updates. |
-| `certificate_audit_log` | Partially Implemented | Insert helper exists in `db.py`, but not wired into main app flows. |
+| `certificate_audit_log` | Implemented | Issuance, revocation, renewal, download, and password-view flows write audit records. |
 | `subject_alternative_names` | Implemented | Populated on cert creation; read by popup with PEM fallback for legacy certs. |
 | `certificate_extensions` | Implemented | Generic extension storage; populated on cert creation for audit trail. |
 | `basic_constraints` | Implemented | Normalized extension storage; populated on cert creation, read by popup. |
@@ -34,10 +34,7 @@ Status labels:
 
 | View | Status | Notes |
 |---|---|---|
-| `certificate_chains` | Planned | Defined in schema; not used by app code. |
-| `certificate_summary` | Planned | Defined in schema; not used by app code. |
-| `certificates_expiring_soon` | Planned | App computes expiring certs directly from `certificates`. |
-| `ca_hierarchy` | Planned | Defined in schema; not used by app code. |
+| `certificate_summary` | Implemented | Used by dashboard statistics queries in `backend/db.py`. |
 
 ### Indexes
 
@@ -75,18 +72,12 @@ Actively used for:
 - revocation status (`status`, `revoked_at`, `revocation_reason`)
 - expiring certificate queries
 
-### 3. `certificate_audit_log` (`Partially Implemented`)
+### 3. `certificate_audit_log` (`Implemented`)
 
-- `db.log_certificate_operation(...)` exists.
-- Main issuance/revocation web flows do not currently call it.
+- `db.log_certificate_operation(...)` is actively called by certificate lifecycle and download flows.
+- Current app flows record create, renew, revoke, artifact download, and PKCS#12 password view events.
 
 ---
-
-## Planned / Not Yet Wired
-
-These schema objects are present and valid in DDL, but current runtime flows do not persist/query them:
-
-- views: `certificate_chains`, `certificate_summary`, `certificates_expiring_soon`, `ca_hierarchy`
 
 ### Recently Implemented (as of Feb 2026)
 
