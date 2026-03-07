@@ -1,5 +1,6 @@
 # Agents
 .claude
+AGENTS.md
 
 # Python/cache
 __pycache__/
@@ -39,6 +40,7 @@ data/
 *.sqlite3
 pki.*
 .pytest_cache
+.tmp*
 
 # Logs
 *.log

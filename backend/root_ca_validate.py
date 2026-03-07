@@ -283,6 +283,7 @@ def validate_and_print(
                 "emailProtection": x509.oid.ExtendedKeyUsageOID.EMAIL_PROTECTION,
                 "codeSigning": x509.oid.ExtendedKeyUsageOID.CODE_SIGNING,
                 "timeStamping": x509.oid.ExtendedKeyUsageOID.TIME_STAMPING,
+                "ocspSigning": x509.oid.ExtendedKeyUsageOID.OCSP_SIGNING,
             }
 
             # Convert expected EKU names to OIDs

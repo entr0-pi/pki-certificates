@@ -34,7 +34,7 @@ DB_PATH = get_db_path()
 SCHEMA_PATH = get_schema_path()
 
 # Schema version this codebase expects
-SCHEMA_VERSION = 1
+SCHEMA_VERSION = 2
 
 # SQLAlchemy Engine singleton
 engine = create_engine(

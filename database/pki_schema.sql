@@ -64,7 +64,7 @@ CREATE TABLE certificates (
     FOREIGN KEY (organization_id) REFERENCES organizations(id) ON DELETE CASCADE,
     FOREIGN KEY (issuer_cert_id) REFERENCES certificates(id) ON DELETE RESTRICT,
 
-    CONSTRAINT cert_type_check CHECK (cert_type IN ('root', 'intermediate', 'server', 'client', 'email')),
+    CONSTRAINT cert_type_check CHECK (cert_type IN ('root', 'intermediate', 'server', 'client', 'email', 'ocsp')),
     CONSTRAINT status_check CHECK (status IN ('active', 'revoked', 'expired'))
     -- REMOVED: UNIQUE (organization_id, cert_name, cert_type)
     -- cert_uuid provides uniqueness; UUID now used for intermediate folder naming
@@ -238,4 +238,4 @@ CREATE TABLE IF NOT EXISTS schema_version (
     applied_at  TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 
-INSERT INTO schema_version (version) VALUES (1);
+INSERT INTO schema_version (version) VALUES (2);

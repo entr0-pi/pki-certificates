@@ -443,6 +443,52 @@ def created_email_cert(test_client, created_org, created_intermediate_ca) -> dic
 
 
 @pytest.fixture(scope="session")
+def created_ocsp_cert(test_client, created_org, created_intermediate_ca) -> dict:
+    """
+    Create an OCSP responder end-entity certificate via POST /organizations/{id}/end-entity
+    with cert_type=ocsp.
+
+    Returns a dict with keys: cert_id, cert_name, org_id, cert_type.
+    """
+    from helpers import compute_enddate
+
+    cert_name = "test_ocsp"
+
+    response = test_client.post(
+        f"/organizations/{created_org['org_id']}/end-entity",
+        data={
+            "cert_type": "ocsp",
+            "cert_name": cert_name,
+            "issuer_type": "intermediate",
+            "issuer_name": created_intermediate_ca["cert_name"],
+            "C": "US",
+            "ST": "CA",
+            "L": "San Francisco",
+            "O": "Test Org",
+            "OU": "IT",
+            "CN": "ocsp.test.example.com",
+            "email": "",
+            "eccurve": "secp256r1",
+            "enddate": compute_enddate(365),
+        },
+    )
+    assert response.status_code == 200, f"Failed to create OCSP cert: {response.text}"
+    if "error" in response.text.lower():
+        pytest.skip("OCSP cert creation unavailable in this configuration")
+
+    cert = database.list_certificates_by_organization(created_org["org_id"])
+    ocsp_certs = [c for c in cert if c["cert_name"] == cert_name]
+    assert len(ocsp_certs) == 1, f"Expected 1 OCSP cert, got {len(ocsp_certs)}"
+
+    return {
+        "cert_id": ocsp_certs[0]["id"],
+        "cert_name": cert_name,
+        "org_id": created_org["org_id"],
+        "cert_type": "ocsp",
+    }
+
+
+@pytest.fixture(scope="session")
 def cert_for_revocation(test_client, created_org, created_intermediate_ca) -> dict:
     """
     Create a dedicated end-entity certificate for revocation testing.

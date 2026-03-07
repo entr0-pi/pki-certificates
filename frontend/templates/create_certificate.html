@@ -117,7 +117,7 @@
                         <div class="form-control" data-force-required-marker="true">
                             <label class="label"><span class="label-text text-sm">EC Curve</span></label>
                             <select class="select select-bordered select-sm" name="eccurve">
-                                <option value="">Default curve</option>
+                                <option value="">Default curve ({{ default_curve_root }})</option>
                                 <option value="secp256r1">secp256r1</option>
                                 <option value="secp384r1">secp384r1</option>
                                 <option value="secp521r1">secp521r1</option>
@@ -208,7 +208,7 @@
                         <div class="form-control" data-force-required-marker="true">
                             <label class="label"><span class="label-text text-sm">EC Curve</span></label>
                             <select class="select select-bordered select-sm" name="eccurve">
-                                <option value="">Default curve</option>
+                                <option value="">Default curve ({{ default_curve_intermediate }})</option>
                                 <option value="secp256r1">secp256r1</option>
                                 <option value="secp384r1">secp384r1</option>
                                 <option value="secp521r1">secp521r1</option>
@@ -251,7 +251,15 @@
                     </div>
 
                     <div class="grid md:grid-cols-3 gap-3">
-                        <!-- Row 1: Issuer CA -->
+                        <!-- Row 1: OCSP Toggle with Badge (for server only) -->
+                        <div id="ocspToggleContainer" class="hidden md:col-span-3 items-center gap-3 p-3 rounded-lg bg-base-200 border border-transparent transition-all duration-200">
+                            <label class="label cursor-pointer gap-2">
+                                <input type="checkbox" id="ocspToggle" class="toggle toggle-accent" />
+                                <span class="label-text font-medium">OCSP Responder</span>
+                            </label>
+                            <div id="certTypeBadge" class="badge badge-outline">normal server</div>
+                        </div>
+                        <!-- Row 2: Issuer CA -->
                         <div class="form-control md:col-span-3">
                             <label class="label"><span class="label-text text-sm">Issuer CA</span></label>
                             <select class="select select-bordered select-sm" name="issuer_name" id="issuerName" required>
@@ -261,7 +269,7 @@
                                 {% endfor %}
                             </select>
                         </div>
-                        <!-- Row 2: Name, CN, Email -->
+                        <!-- Row 3: Name, CN, Email -->
                         <div class="form-control">
                             <label class="label"><span class="label-text text-sm">Name</span></label>
                             <input class="input input-bordered input-sm" name="cert_name" id="eeCertName" placeholder="server-01" required>
@@ -323,7 +331,7 @@
                         <div class="form-control" data-force-required-marker="true">
                             <label class="label"><span class="label-text text-sm">EC Curve</span></label>
                             <select class="select select-bordered select-sm" name="eccurve">
-                                <option value="">Default curve</option>
+                                <option value="">Default curve ({{ default_curve_end_entity }})</option>
                                 <option value="secp256r1">secp256r1</option>
                                 <option value="secp384r1">secp384r1</option>
                                 <option value="secp521r1">secp521r1</option>
@@ -331,7 +339,7 @@
                         </div>
                     </div>
 
-                    <!-- Row 5: SAN (for server only) -->
+                    <!-- SAN (for server only) -->
                     <div id="sanSection">
                         <label class="label"><span class="label-text text-sm">Subject Alternative Names (SANs)</span></label>
                         <div id="sanRows" class="space-y-2"></div>
@@ -414,9 +422,68 @@
 
         const eeType = document.getElementById("eeType");
         const eeButtons = Array.from(document.querySelectorAll("[data-ee-type]"));
+        const ocspToggle = document.getElementById("ocspToggle");
+        const ocspToggleContainer = document.getElementById("ocspToggleContainer");
+
+        // OCSP toggle handler: flips between "server" and "ocsp" cert_type, and hides SAN when checked
+        if (ocspToggle) {
+            ocspToggle.addEventListener("change", function () {
+                if (eeType.value === "server" || eeType.value === "ocsp") {
+                    eeType.value = this.checked ? "ocsp" : "server";
+                }
+                // Update badge
+                const badge = document.getElementById("certTypeBadge");
+                if (badge) {
+                    badge.textContent = this.checked ? "ocsp" : "normal server";
+                    badge.className = this.checked ? "badge badge-outline badge-secondary" : "badge badge-outline";
+                }
+                // Highlight container border when OCSP is active
+                if (ocspToggleContainer) {
+                    ocspToggleContainer.classList.toggle("border-accent", this.checked);
+                    ocspToggleContainer.classList.toggle("border-transparent", !this.checked);
+                }
+                // Update default days based on cert type and recalculate enddate
+                const daysInput = document.querySelector('#days-input-end-entity input[data-type="days"]');
+                if (daysInput) {
+                    daysInput.value = this.checked ? "365" : "{{ default_days_end_entity }}";
+                    // Trigger input event to recalculate enddate
+                    daysInput.dispatchEvent(new Event('input', { bubbles: true }));
+                }
+                // Hide SAN section when OCSP is enabled
+                const sanSection = document.getElementById("sanSection");
+                const sanHidden = document.getElementById("sanHidden");
+                if (this.checked) {
+                    sanSection.classList.add("hidden");
+                    // Clear SAN data when OCSP is enabled
+                    document.getElementById("sanRows").innerHTML = "";
+                    if (sanHidden) sanHidden.value = "";
+                } else {
+                    sanSection.classList.remove("hidden");
+                    // Restore a default SAN row when OCSP is disabled
+                    if (!document.getElementById("sanRows").children.length) addSanRow();
+                }
+            });
+        }
+
         function setEndEntityType(type) {
             if (!eeType) return;
             eeType.value = type;
+
+            // Show OCSP toggle only for server type
+            if (ocspToggleContainer) {
+                if (type === "server") {
+                    ocspToggleContainer.classList.remove("hidden");
+                    ocspToggleContainer.classList.add("flex");
+                } else {
+                    ocspToggleContainer.classList.add("hidden");
+                    ocspToggleContainer.classList.remove("flex");
+                    // Reset OCSP toggle when switching away from server
+                    if (ocspToggle) {
+                        ocspToggle.checked = false;
+                    }
+                }
+            }
+
             eeButtons.forEach((b) => {
                 const active = b.dataset.eeType === type;
                 b.classList.toggle("btn-primary", active);

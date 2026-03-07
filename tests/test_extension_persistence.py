@@ -591,3 +591,34 @@ def test_double_revoke_does_not_duplicate_crl_row(
     cursor.execute("SELECT status FROM certificates WHERE id = ?", (cert_id,))
     cert_status = cursor.fetchone()[0]
     assert cert_status == "revoked", f"Cert should be revoked after second revoke, got {cert_status}"
+
+
+@pytest.mark.unit
+def test_ocsp_cert_eku_persisted(created_ocsp_cert, db_connection):
+    """
+    OCSP responder certificate has OCSPSigning EKU persisted in the extended_key_usage table
+    with OID 1.3.6.1.5.5.7.3.9 and name 'ocspSigning'.
+    """
+    cert_id = created_ocsp_cert["cert_id"]
+
+    cursor = db_connection.cursor()
+    cursor.execute(
+        "SELECT eku_oid, eku_name FROM extended_key_usage WHERE certificate_id = ?",
+        (cert_id,)
+    )
+    rows = cursor.fetchall()
+
+    assert len(rows) > 0, f"No EKU rows found for OCSP cert {cert_id}"
+
+    # Find ocspSigning
+    ocsp_signing_oid = "1.3.6.1.5.5.7.3.9"
+    found = False
+    for oid, name in rows:
+        if oid == ocsp_signing_oid:
+            assert name == "ocspSigning", \
+                f"EKU name should be 'ocspSigning' for OID {ocsp_signing_oid}, got '{name}'"
+            found = True
+            break
+
+    assert found, \
+        f"OCSPSigning OID {ocsp_signing_oid} not found in extended_key_usage for OCSP cert {cert_id}"

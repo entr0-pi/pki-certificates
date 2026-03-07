@@ -647,6 +647,11 @@ def _run_create_cert_subprocess(params: dict) -> str:
                 timeout=SUBPROCESS_TIMEOUT,
             )
             return result.stdout
+        except subprocess.CalledProcessError as e:
+            logger.error(f"Certificate creation subprocess failed with exit code {e.returncode}")
+            logger.error(f"Subprocess stderr: {e.stderr}")
+            logger.error(f"Subprocess stdout: {e.stdout}")
+            raise
         except subprocess.TimeoutExpired as e:
             logger.error(f"Certificate creation subprocess timed out after {SUBPROCESS_TIMEOUT}s")
             raise TimeoutError(f"Certificate creation process timed out after {SUBPROCESS_TIMEOUT} seconds") from e
@@ -988,6 +993,9 @@ async def create_certificate_page(request: Request, org_id: int):
             "default_days_root": int(root_policy["DEFAULT_DAYS"]),
             "default_days_intermediate": int(intermediate_policy["DEFAULT_DAYS"]),
             "default_days_end_entity": int(server_policy["DEFAULT_DAYS"]),
+            "default_curve_root": root_policy.get("ec_curve", "secp384r1"),
+            "default_curve_intermediate": intermediate_policy.get("ec_curve", "secp384r1"),
+            "default_curve_end_entity": server_policy.get("ec_curve", "secp256r1"),
         },
     )
 
@@ -1096,7 +1104,7 @@ async def renew_certificate_page(request: Request, org_id: int, cert_id: int):
     # Look up issuer name for end-entity certs
     issuer_name = None
     issuer_type = None
-    if cert_type in ("server", "client", "email") and cert.get("issuer_cert_id"):
+    if cert_type in ("server", "client", "email", "ocsp") and cert.get("issuer_cert_id"):
         issuer_cert = db.get_certificate_by_id_for_organization(cert["issuer_cert_id"], org_id)
         if issuer_cert:
             issuer_name = issuer_cert["cert_name"]
@@ -2110,7 +2118,7 @@ async def create_end_entity(
         )
 
     # Validate cert_type
-    if cert_type not in ["server", "client", "email"]:
+    if cert_type not in ["server", "client", "email", "ocsp"]:
         return templates.TemplateResponse(
             "error.html",
             {
@@ -2219,7 +2227,7 @@ async def create_end_entity(
     if enddate.strip():
         params["enddate"] = enddate.strip()
     else:
-        type_to_role = {"server": "end-entity-server", "client": "end-entity-client", "email": "end-entity-email"}
+        type_to_role = {"server": "end-entity-server", "client": "end-entity-client", "email": "end-entity-email", "ocsp": "end-entity-ocsp"}
         entity_policy = _load_role_policy(type_to_role[cert_type])
         params["enddate"] = compute_enddate(int(entity_policy["DEFAULT_DAYS"]))
 

@@ -347,3 +347,76 @@ def test_email_cert_pkcs12_parseable(created_email_cert, created_org):
 
     assert certificate.serial_number == standalone_cert.serial_number, \
         "PKCS#12 cert serial does not match standalone cert"
+
+
+@pytest.mark.integration
+def test_ocsp_cert_has_ocsp_signing_eku(created_ocsp_cert, created_org):
+    """
+    OCSP responder certificate has OCSPSigning Extended Key Usage (OID 1.3.6.1.5.5.7.3.9),
+    not serverAuth.
+    """
+    from pathlib import Path
+    from cryptography import x509
+
+    project_root = Path(__file__).resolve().parent.parent
+    org_dir = project_root / created_org["org_dir"]
+    ee_dir = org_dir / "3_end-entities" / "ocsp" / created_ocsp_cert["cert_name"]
+
+    cert_file = ee_dir / "certs" / f"{created_ocsp_cert['cert_uuid']}.pem.enc"
+    assert cert_file.exists(), f"OCSP cert file not found: {cert_file}"
+
+    cert_pem = file_crypto.read_encrypted(cert_file)
+    cert = x509.load_pem_x509_certificate(cert_pem)
+
+    # Extract EKU
+    try:
+        eku_ext = cert.extensions.get_extension_for_class(x509.ExtendedKeyUsage)
+        eku_oids = [str(oid) for oid in eku_ext.value]
+    except x509.ExtensionNotFound:
+        pytest.fail("OCSP cert does not have ExtendedKeyUsage extension")
+
+    # Verify ocspSigning OID is present
+    ocsp_signing_oid = "1.3.6.1.5.5.7.3.9"
+    assert ocsp_signing_oid in eku_oids, \
+        f"OCSP cert does not have OCSPSigning OID. Found: {eku_oids}"
+
+    # Verify serverAuth is NOT present
+    server_auth_oid = "1.3.6.1.5.5.7.3.1"
+    assert server_auth_oid not in eku_oids, \
+        f"OCSP cert should not have serverAuth OID. Found: {eku_oids}"
+
+
+@pytest.mark.integration
+def test_ocsp_cert_not_ca(created_ocsp_cert, created_org):
+    """
+    OCSP responder certificate has BasicConstraints CA:FALSE.
+    """
+    from pathlib import Path
+    from cryptography import x509
+
+    project_root = Path(__file__).resolve().parent.parent
+    org_dir = project_root / created_org["org_dir"]
+    ee_dir = org_dir / "3_end-entities" / "ocsp" / created_ocsp_cert["cert_name"]
+
+    cert_file = ee_dir / "certs" / f"{created_ocsp_cert['cert_uuid']}.pem.enc"
+    cert_pem = file_crypto.read_encrypted(cert_file)
+    cert = x509.load_pem_x509_certificate(cert_pem)
+
+    # Verify BasicConstraints
+    try:
+        bc_ext = cert.extensions.get_extension_for_class(x509.BasicConstraints)
+        assert bc_ext.value.ca is False, \
+            "OCSP cert BasicConstraints.ca should be False"
+    except x509.ExtensionNotFound:
+        pytest.fail("OCSP cert does not have BasicConstraints extension")
+
+
+@pytest.mark.unit
+def test_ocsp_cert_type_in_db(created_ocsp_cert):
+    """
+    OCSP certificate is stored in database with cert_type='ocsp'.
+    """
+    cert = database.get_certificate_by_id(created_ocsp_cert["cert_id"])
+    assert cert is not None, f"OCSP cert not found in DB: {created_ocsp_cert['cert_id']}"
+    assert cert["cert_type"] == "ocsp", \
+        f"OCSP cert type should be 'ocsp', got '{cert['cert_type']}'"

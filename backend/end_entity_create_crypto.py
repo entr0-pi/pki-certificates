@@ -117,10 +117,11 @@ def main() -> None:
         "server": "end-entity-server",
         "client": "end-entity-client",
         "email": "end-entity-email",
+        "ocsp": "end-entity-ocsp",
     }
 
     if cert_type not in type_to_role:
-        sys.exit(f"Invalid cert_type: {cert_type}. Must be one of: server, client, email")
+        sys.exit(f"Invalid cert_type: {cert_type}. Must be one of: server, client, email, ocsp")
 
     role = type_to_role[cert_type]
     entity_defaults = policy["role_defaults"][role]

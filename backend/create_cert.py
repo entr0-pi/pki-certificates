@@ -18,6 +18,7 @@ def main() -> None:
     - "server"        end_entity_create_crypto.py
     - "client"        end_entity_create_crypto.py
     - "email"         end_entity_create_crypto.py
+    - "ocsp"          end_entity_create_crypto.py
     """
     parser = argparse.ArgumentParser(
         description="Create certificates (root CA, intermediate CA, or end-entity)."
@@ -30,7 +31,7 @@ def main() -> None:
     cert_type = str(config.get("cert_type", "")).lower()
 
     if not cert_type:
-        sys.exit(" Missing 'cert_type' in config. Must be one of: root, intermediate, server, client, email")
+        sys.exit(" Missing 'cert_type' in config. Must be one of: root, intermediate, server, client, email, ocsp")
 
     # Map cert_type to script
     script_map = {
@@ -39,6 +40,7 @@ def main() -> None:
         "server": "end_entity_create_crypto.py",
         "client": "end_entity_create_crypto.py",
         "email": "end_entity_create_crypto.py",
+        "ocsp": "end_entity_create_crypto.py",
     }
 
     if cert_type not in script_map:

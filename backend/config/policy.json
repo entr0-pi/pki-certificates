@@ -80,6 +80,19 @@
       "AUTHORITYKEYIDENTIFIER": "keyid,issuer",
       "EXTENDEDKEYUSAGE": "clientAuth, emailProtection",
       "CRL_URL": "{PKI_BASE_URL}/organizations/{org_id}/crl/{issuer_name}"
+    },
+    "end-entity-ocsp": {
+      "ec_curve": "secp256r1",
+      "key_encryption_cipher": "aes256",
+      "DEFAULT_HASH_CA": "sha256",
+      "DEFAULT_HASH_REQ": "sha256",
+      "DEFAULT_DAYS": "365",
+      "DEFAULT_RSA_KEY_BITS": "2048",
+      "KEYUSAGE": "critical, digitalSignature",
+      "BASICCONSTRAINTS": "CA:FALSE",
+      "AUTHORITYKEYIDENTIFIER": "keyid,issuer",
+      "EXTENDEDKEYUSAGE": "ocspSigning",
+      "CRL_URL": "{PKI_BASE_URL}/organizations/{org_id}/crl/{issuer_name}"
     }
   },
 
