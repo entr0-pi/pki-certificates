@@ -8,6 +8,12 @@ Markers: unit (config loading), integration (HTTP enforcement)
 import pytest
 import json
 from pathlib import Path
+import sys
+
+# Add backend to path for imports
+BACKEND_PATH = Path(__file__).resolve().parent.parent / "backend"
+if str(BACKEND_PATH) not in sys.path:
+    sys.path.insert(0, str(BACKEND_PATH))
 
 
 # =============================================================================
@@ -17,7 +23,7 @@ from pathlib import Path
 @pytest.mark.unit
 def test_load_rbac_config_returns_dict():
     """rbac.json loads as a dict."""
-    from backend.app import _load_rbac_config
+    from app import _load_rbac_config
     rbac = _load_rbac_config()
     assert isinstance(rbac, dict)
     assert len(rbac) >= 12  # At minimum the 12 restricted routes
@@ -26,7 +32,7 @@ def test_load_rbac_config_returns_dict():
 @pytest.mark.unit
 def test_load_rbac_config_no_comment_keys():
     """_comment keys are stripped by _load_rbac_config()."""
-    from backend.app import _load_rbac_config
+    from app import _load_rbac_config
     rbac = _load_rbac_config()
     assert all(not k.startswith("_") for k in rbac)
 
@@ -34,7 +40,7 @@ def test_load_rbac_config_no_comment_keys():
 @pytest.mark.unit
 def test_load_rbac_config_toolbox_admin_only():
     """GET /toolbox is restricted to admin."""
-    from backend.app import _load_rbac_config
+    from app import _load_rbac_config
     rbac = _load_rbac_config()
     assert rbac.get("GET /toolbox") == ["admin"]
 
@@ -42,7 +48,7 @@ def test_load_rbac_config_toolbox_admin_only():
 @pytest.mark.unit
 def test_load_rbac_config_health_admin_and_manager():
     """GET /health is restricted to admin and manager."""
-    from backend.app import _load_rbac_config
+    from app import _load_rbac_config
     rbac = _load_rbac_config()
     assert set(rbac.get("GET /health", [])) == {"admin", "manager"}
 
@@ -50,7 +56,7 @@ def test_load_rbac_config_health_admin_and_manager():
 @pytest.mark.unit
 def test_validate_rbac_config_passes_on_valid_file():
     """_validate_rbac_config() must not raise on valid rbac.json."""
-    from backend.app import _validate_rbac_config
+    from app import _validate_rbac_config
     _validate_rbac_config()
 
 
@@ -61,8 +67,8 @@ def test_validate_rbac_config_passes_on_valid_file():
 @pytest.mark.integration
 def test_admin_route_returns_403_for_manager(created_org):
     """GET /toolbox (admin-only) must return 403 when called with a manager token."""
-    from backend.auth import create_session_jwt, load_auth_settings
-    from backend.app import app
+    from auth import create_session_jwt, load_auth_settings
+    from app import app
     from fastapi.testclient import TestClient
 
     settings = load_auth_settings()
@@ -84,8 +90,8 @@ def test_admin_route_allows_admin(test_client):
 @pytest.mark.integration
 def test_admin_manager_route_allows_manager(test_client):
     """GET /health (admin+manager) returns 200 for manager — simpler than checking form."""
-    from backend.auth import create_session_jwt, load_auth_settings
-    from backend.app import app
+    from auth import create_session_jwt, load_auth_settings
+    from app import app
     from fastapi.testclient import TestClient
 
     settings = load_auth_settings()
@@ -100,8 +106,8 @@ def test_admin_manager_route_allows_manager(test_client):
 @pytest.mark.integration
 def test_unrestricted_route_allows_user(test_client):
     """GET /organizations (no role restriction in rbac.json) allows user-role token."""
-    from backend.auth import create_session_jwt, load_auth_settings
-    from backend.app import app
+    from auth import create_session_jwt, load_auth_settings
+    from app import app
     from fastapi.testclient import TestClient
 
     settings = load_auth_settings()
@@ -115,8 +121,8 @@ def test_unrestricted_route_allows_user(test_client):
 @pytest.mark.integration
 def test_manager_cannot_access_admin_only_create_org(created_org):
     """POST /create-organization (admin-only) returns 403 for manager."""
-    from backend.auth import create_session_jwt, load_auth_settings
-    from backend.app import app
+    from auth import create_session_jwt, load_auth_settings
+    from app import app
     from fastapi.testclient import TestClient
 
     settings = load_auth_settings()

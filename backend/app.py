@@ -2340,6 +2340,11 @@ async def revoke_certificate(
         logger.warning(f"Certificate {cert_id} is already {cert['status']}")
         # Redirect back to dashboard
         root_ca_exists = bool(get_latest_active_root_ca_name(org_id))
+        ui_policy = request.app.state.ui_policy
+        dashboard_policy = ui_policy.get("dashboard", {})
+        expiration_days = dashboard_policy.get("alert_window_days", 90)
+        warning_days = dashboard_policy.get("warning_days", 60)
+        critical_days = dashboard_policy.get("critical_days", 30)
 
         return templates.TemplateResponse(
             "organization_dashboard.html",
@@ -2351,6 +2356,9 @@ async def revoke_certificate(
                 "certificates": db.list_certificates_by_organization(org_id),
                 "audit_logs": db.get_recent_audit_logs(org_id, limit=20),
                 "hierarchy": db.get_certificate_hierarchy(org_id),
+                "expiration_days": expiration_days,
+                "warning_days": warning_days,
+                "critical_days": critical_days,
             },
         )
 
@@ -2431,6 +2439,11 @@ async def revoke_certificate(
 
     # Redirect back to dashboard
     root_ca_exists = bool(get_latest_active_root_ca_name(org_id))
+    ui_policy = request.app.state.ui_policy
+    dashboard_policy = ui_policy.get("dashboard", {})
+    expiration_days = dashboard_policy.get("alert_window_days", 90)
+    warning_days = dashboard_policy.get("warning_days", 60)
+    critical_days = dashboard_policy.get("critical_days", 30)
 
     return templates.TemplateResponse(
         "organization_dashboard.html",
@@ -2442,6 +2455,9 @@ async def revoke_certificate(
             "certificates": db.list_certificates_by_organization(org_id),
             "audit_logs": db.get_recent_audit_logs(org_id, limit=20),
             "hierarchy": db.get_certificate_hierarchy(org_id),
+            "expiration_days": expiration_days,
+            "warning_days": warning_days,
+            "critical_days": critical_days,
         },
     )
 
