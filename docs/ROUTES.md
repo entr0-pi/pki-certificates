@@ -36,6 +36,10 @@ PKI_API_KEY_USER=...
 
 `POST /auth/session` matches `api_key` against these values and issues a session cookie JWT with the matching role.
 
+Operator note:
+- `PKI_JWT_SECRET` should be provisioned as a strong random secret of at least 32 characters.
+- `PKI_COOKIE_SECURE` and `PKI_COOKIE_SAMESITE` are deployment choices; changing them can affect login and form workflows.
+
 ## Access Control Configuration (`backend/config/rbac.json`)
 
 Route permissions are configuration-driven through `backend/config/rbac.json`.
@@ -128,6 +132,7 @@ Legend: `✓` allowed, `-` denied, `public` no auth required.
 
 | Route | admin | manager | user | Notes |
 |------|:-----:|:-------:|:----:|------|
+| `GET /healthz` | public | public | public | Liveness probe |
 | `GET /health` | ✓ | ✓ | - | DB/system health |
 | `GET /api/check-consistency` | ✓ | ✓ | - | DB vs disk consistency check |
 | `GET /api/organizations/{org_id}/crls` | ✓ | ✓ | ✓ | List available CRLs per issuer |
@@ -353,6 +358,16 @@ Legend: `✓` allowed, `-` denied, `public` no auth required.
 - Request JSON: none
 - Response JSON: none (CRL file download)
 
+### `GET /healthz`
+- Auth required: no
+- Request JSON: none
+- Response (example):
+```json
+{
+  "status": "ok"
+}
+```
+
 ### `GET /health`
 - Auth required: yes
 - Request JSON: none
@@ -431,6 +446,7 @@ Legend: `✓` allowed, `-` denied, `public` no auth required.
 
 - API keys should be distinct per role.
 - JWT role claims are signed using `PKI_JWT_SECRET`.
+- The application currently accepts any non-empty `PKI_JWT_SECRET`; operators should use a strong 32+ character random secret.
 - `PKI_SESSION_MINUTES` timeout applies equally to all roles.
 - Expired JWTs are rejected before role checks.
 - `manager` cannot create/renew root or intermediate certificates because the corresponding `POST` routes are admin-only.

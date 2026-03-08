@@ -242,9 +242,9 @@ Log out between roles and re-login each time.
 - [ ] CRL Distribution Cards - Responsive Layout: resize to tablet width and verify cards display in 2 columns.
 - [ ] CRL Distribution Cards - Responsive Layout: resize to full width and verify cards display in 3 columns.
 
-## Automated Test Coverage (Already Verified by pytest)
+## Automated Test Coverage (Verify Per Run)
 
-These aspects are already tested by the automated test suite and do not need manual verification:
+These areas have automated tests in the repository, but you should still review the actual `pytest` result for skips or environment-specific gaps before relying on them:
 
 - [ ] Certificate Metadata Extraction: subject fields and extensions parsed from PEM correctly.
 - [ ] Database Consistency: `issuer_cert_id` chain integrity, serial number uniqueness, cert UUID uniqueness.
@@ -256,7 +256,7 @@ These aspects are already tested by the automated test suite and do not need man
 - [ ] Revocation Idempotency: double-revoke returns correct status.
 - [ ] PKCS#12 Bundle Generation: encrypted `.p12` bundle and password file exist for eligible certificates.
 
-Run `pytest tests/ -v` to verify these before manual testing.
+Run `pytest tests/ -v` and confirm the relevant tests are not skipped in your deployment environment before treating any of the items above as covered.
 
 ---
 

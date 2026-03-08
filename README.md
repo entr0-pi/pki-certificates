@@ -2,6 +2,29 @@
 
 Web-based PKI management for root, intermediate, and end-entity certificates (server, client, email, OCSP responder) with policy enforcement, RBAC, CRL generation, audit logging, and multi-organization isolation.
 
+## Overview
+
+This application provides a complete, self-hosted certificate authority (CA) management platform for organizations managing their own PKI infrastructure. It enables teams to create, issue, renew, and revoke X.509 certificates across multiple organizations with role-based access control, encrypted storage, and cryptographic audit trails.
+
+### Key Capabilities
+
+- **Certificate Lifecycle Management** — Create root CAs, intermediate CAs, and end-entity certificates (TLS servers, client auth, S/MIME, OCSP responders) with configurable validity periods and cryptographic algorithms.
+- **Multi-Organization Isolation** — Manage separate certificate hierarchies for different organizations in a single deployment with complete data isolation.
+- **Role-Based Access Control** — Three roles (admin, manager, user) with granular permissions for creation, renewal, revocation, and downloads.
+- **Certificate Revocation Lists** — Automatic CRL generation and distribution when certificates are revoked; public endpoints for external validators.
+- **Encrypted Storage** — Certificate private keys and sensitive data encrypted at rest; decryption only on demand.
+- **Audit Logging** — Track all certificate operations (creation, renewal, revocation) with user attribution and timestamps.
+- **Policy-Driven Defaults** — Enforce certificate constraints (validity periods, key algorithms, SAN validation) via centralized policy configuration.
+
+### Use Cases
+
+- **Internal TLS Infrastructure** — Issue and manage TLS certificates for internal services, microservices, and APIs without external CA dependencies.
+- **Client Certificate Authentication** — Deploy mTLS for secure service-to-service communication or employee device authentication.
+- **Email & Document Signing** — Issue S/MIME certificates for encrypted email and digitally-signed document workflows.
+- **IoT & Embedded Systems** — Manage device certificates for IoT deployments with automated renewal and revocation.
+- **Compliance & Regulated Environments** — Maintain full audit trails and control over certificate issuance for regulatory requirements (HIPAA, PCI-DSS, SOC 2).
+- **Development & Testing** — Create test certificates on-demand for development environments without managing external CA integrations.
+
 ## Quickstart with Docker Image
 
 You can run the application directly from the published container image without building it locally.
@@ -59,7 +82,7 @@ Commonly used settings:
 | `PKI_DB_PATH` | `<repo>/database/pki.db` | Must be an absolute path if set |
 | `PKI_SESSION_MINUTES` | `15` | Session lifetime |
 | `PKI_AUTH_COOKIE_NAME` | `pki_session` | Session cookie name |
-| `PKI_COOKIE_SECURE` | `false` | Set `true` behind HTTPS |
+| `PKI_COOKIE_SECURE` | `true` | Runtime default in code; must stay `true` behind HTTPS |
 | `PKI_COOKIE_SAMESITE` | `lax` | Cookie SameSite policy |
 | `PKI_COOKIE_DOMAIN` | empty | Optional cookie domain scope |
 
@@ -84,7 +107,7 @@ PKI_JWT_SECRET=replace-with-a-long-random-jwt-secret
 PKI_SESSION_MINUTES=60
 
 PKI_AUTH_COOKIE_NAME=pki_session
-PKI_COOKIE_SECURE=false
+PKI_COOKIE_SECURE=true
 PKI_COOKIE_SAMESITE=lax
 PKI_COOKIE_DOMAIN=
 ```
@@ -93,6 +116,9 @@ Notes:
 
 - Leave `PKI_DATA_DIR` and `PKI_DB_PATH` empty to use the repo defaults.
 - If you set either path, it must be absolute.
+- The application accepts your auth and cookie settings as provided; deployment hardening remains the operator's responsibility.
+- Use a strong `PKI_JWT_SECRET` and keep it at 32+ random characters even though the current code only requires it to be non-empty.
+- Do not tighten cookie or CSP settings in production without validating the affected login, form, download, and frontend flows in your environment.
 - Use `PKI_COOKIE_SECURE=true` in HTTPS deployments.
 
 ### 3. Initialize the database

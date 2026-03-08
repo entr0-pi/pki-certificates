@@ -1,7 +1,7 @@
 # PKI Management System - Security Documentation
 
-**Last Updated**: March 3, 2026
-**Status**: Production-Ready ✅
+**Last Updated**: March 8, 2026
+**Status**: Deployment guidance for the current codebase
 
 ---
 
@@ -22,7 +22,7 @@
 
 ## Security Overview
 
-This PKI Management System is a high-security application for certificate lifecycle management. It implements defense-in-depth security practices across all layers.
+This PKI Management System is a security-sensitive application for certificate lifecycle management. It implements multiple defensive controls, but final deployment hardening choices remain the responsibility of the operator.
 
 ### Key Security Principles
 
@@ -32,6 +32,7 @@ This PKI Management System is a high-security application for certificate lifecy
 - **Entropy**: Random salts and session IDs for cryptographic operations
 - **Validation**: Input validation at system boundaries; RFC 5280 compliance for certificates
 - **Audit Trail**: All operations logged with session identity and timestamps
+- **Operator Responsibility**: Secret strength, TLS termination, cookie policy, proxy behavior, and deployment-time hardening are not outsourced to the application
 
 ---
 
@@ -105,7 +106,7 @@ This PKI Management System is a high-security application for certificate lifecy
 **Attack**: Cross-Origin Request Forgery via form submission from attacker website
 
 **Defense**:
-- Primary: SameSite=strict cookies prevent cross-site cookie inclusion
+- Primary: SameSite cookie protection based on deployed `PKI_COOKIE_SAMESITE` value
 - Secondary: X-Requested-With header check for additional protection
 - Implementation:
   ```python
@@ -144,7 +145,7 @@ export PKI_ENCRYPTION_SALT=$SALT
 **Implementation**:
 - JWT tokens signed with HS256 (HMAC-SHA256)
 - Issued via `/auth/session` endpoint after API key validation
-- Stored in HTTPOnly, Secure, SameSite=strict cookie
+- Stored in HTTPOnly cookie, with `Secure` and `SameSite` behavior controlled by deployment settings
 - Session identifier: `{role}-{uuid}` (e.g., `admin-550e8400-e29b-41d4-a716-446655440000`)
 - Default session duration: 15 minutes (configurable via PKI_SESSION_MINUTES)
 - Token includes: `sub` (session ID), `role`, `iat`, `exp`, `iss`
@@ -154,6 +155,7 @@ export PKI_ENCRYPTION_SALT=$SALT
 - Leeway: 30 seconds for clock skew
 - Signature verification required for all requests
 - Expired tokens redirect to login
+- The current code requires `PKI_JWT_SECRET` to be present, but does not enforce a minimum length; operators should supply a strong 32+ character random secret
 
 ---
 
@@ -185,7 +187,7 @@ export PKI_ENCRYPTION_SALT=$SALT
 | `X-Frame-Options` | DENY | Prevents clickjacking |
 | `X-Content-Type-Options` | nosniff | Prevents MIME sniffing |
 | `Referrer-Policy` | strict-origin-when-cross-origin | Controls referrer leakage |
-| `Content-Security-Policy` | `default-src 'self'` | Restricts resource loading |
+| `Content-Security-Policy` | `default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'` | Restricts resource loading within current template/frontend constraints |
 | `Strict-Transport-Security` | `max-age=63072000; includeSubDomains` | HSTS for 2 years (HTTPS only) |
 
 **Middleware**:
@@ -195,6 +197,10 @@ async def security_headers_middleware(request: Request, call_next):
     # Adds all headers to every response
     # HSTS only sent over HTTPS
 ```
+
+**Operational note**:
+- The current CSP allows inline script/style because the shipped frontend still depends on that behavior in some flows
+- Tightening CSP further should be treated as an application change and regression-tested, not as a documentation-only hardening step
 
 ---
 
@@ -247,6 +253,9 @@ except subprocess.TimeoutExpired:
   - Reason: Browsers and applications need to fetch CRLs without authentication to validate certificate revocation status
   - This is required by RFC 5280 and X.509 PKI standards
   - CRL contents are non-sensitive (only lists revoked certificate serial numbers)
+- **Liveness Probe**: `/healthz`
+  - Intended for container/runtime probes
+  - Returns only a lightweight status response
 - **Login/Logout**: `/auth/login`, `/auth/session`, `/auth/logout`
   - Required for session establishment
 
@@ -464,7 +473,8 @@ details: {
 ### Pre-Deployment Checklist
 
 - [ ] Review all source code changes
-- [ ] Run full test suite: `pytest tests/` (expect 40/40 passing)
+- [ ] Run full test suite: `pytest tests/`
+- [ ] Review skipped tests and confirm they are acceptable for your target deployment
 - [ ] Rotate all API keys from .env
 - [ ] Generate unique encryption salt: `openssl rand -base64 32`
 - [ ] Configure HTTPS with valid TLS certificate
@@ -486,10 +496,15 @@ details: {
 ### Runtime Security
 
 **HTTPS Only**:
-- Set `PKI_COOKIE_SECURE=true` (default since Mar 2026)
+- Set `PKI_COOKIE_SECURE=true`
 - Configure TLS 1.2+ with strong ciphers
 - Use certificates from trusted CA
 - HSTS header will be sent automatically (max-age=2 years)
+
+**Configuration Responsibility**:
+- The application does not currently reject weak JWT secrets or weak operational choices by itself
+- Treat `.env` and reverse-proxy settings as part of the security boundary
+- If you change cookie policy, CSP, or auth/session parameters, validate the full login and certificate workflow before deployment
 
 **Database Security**:
 - SQLite file permissions: 0600 (owner read/write only)
