@@ -2,19 +2,23 @@
 
 Web-based PKI management for root, intermediate, and end-entity certificates (server, client, email, OCSP responder) with policy enforcement, RBAC, CRL generation, audit logging, and multi-organization isolation.
 
-## Documentation
+## Quickstart with Docker Image
 
-| Document | Purpose |
-|----------|---------|
-| [docs/ROUTES.md](docs/ROUTES.md) | HTTP routes, auth requirements, and RBAC matrix |
-| [docs/DB_SCHEMA.md](docs/DB_SCHEMA.md) | SQLite schema and table relationships |
-| [docs/SECURITY.md](docs/SECURITY.md) | Deployment hardening, secret handling, and operational security notes |
-| [docs/FRONTEND.md](docs/FRONTEND.md) | Tailwind/DaisyUI frontend build workflow and asset pipeline |
-| [docs/CRON_JOBS.md](docs/CRON_JOBS.md) | Scheduling guidance for consistency checks and maintenance tasks |
-| [docs/TEST_PLAN.md](docs/TEST_PLAN.md) | Test scope and verification strategy |
-| [docs/SKELETON.md](docs/SKELETON.md) | Project skeleton/reference layout |
+You can run the application directly from the published container image without building it locally.
 
-## Quickstart
+```bash
+nano docker-compose.yml
+# copy/past the one in /docker + adapt at will
+nano .env
+# copy/past .env.example
+# edit with your real secrets
+docker compose pull
+docker compose up -d
+```
+
+The default Compose image is `ghcr.io/entr0-pi/pki-certificates:latest`. See [docker/README.md](docker/README.md) for Docker-specific setup details.
+
+## How-to for local dev
 
 ### Prerequisites
 
@@ -111,7 +115,7 @@ python backend/app.py
 
 Open `http://localhost:8000` and sign in with one of the configured API keys.
 
-## Frontend workflow
+## Frontend build workflow
 
 The frontend is server-rendered with Jinja templates and a compiled Tailwind CSS bundle.
 
@@ -166,6 +170,18 @@ package.json                npm scripts for frontend asset builds
 tailwind.config.js          Tailwind/DaisyUI configuration
 requirements.txt            Python runtime dependencies
 ```
+
+## Technical Documentation
+
+| Document | Purpose |
+|----------|---------|
+| [docs/ROUTES.md](docs/ROUTES.md) | HTTP routes, auth requirements, and RBAC matrix |
+| [docs/DB_SCHEMA.md](docs/DB_SCHEMA.md) | SQLite schema and table relationships |
+| [docs/SECURITY.md](docs/SECURITY.md) | Deployment hardening, secret handling, and operational security notes |
+| [docs/FRONTEND.md](docs/FRONTEND.md) | Tailwind/DaisyUI frontend build workflow and asset pipeline |
+| [docs/CRON_JOBS.md](docs/CRON_JOBS.md) | Scheduling guidance for consistency checks and maintenance tasks |
+| [docs/TEST_PLAN.md](docs/TEST_PLAN.md) | Test scope and verification strategy |
+| [docs/SKELETON.md](docs/SKELETON.md) | Project skeleton/reference layout |
 
 ## Testing
 

@@ -18,6 +18,7 @@ venv/
 !docker/.env.example
 *.secret
 *.secrets
+push_ghcr_image.bat
 
 # PKI sensitive artifacts
 *.key
