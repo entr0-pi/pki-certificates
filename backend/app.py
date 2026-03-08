@@ -1285,6 +1285,48 @@ def _resolve_crl_path_for_cert(org: dict, cert: dict) -> Path | None:
     return path if path.exists() else None
 
 
+@app.get("/api/organizations/{org_id}/crls", response_model=list[dict])
+async def list_organization_crls(org_id: int, dependencies=[require_roles_config()]):
+    """
+    List all available CRL issuers for an organization.
+    Returns: [{issuer_name, cert_type, has_crl, download_url, revoked_count, last_updated}]
+    """
+    org = db.get_organization_by_id(org_id)
+    if not org:
+        return []
+
+    certs = db.list_certificates_by_organization(org_id)
+    issuers = [c for c in certs if c["cert_type"] in ("root", "intermediate")]
+
+    result = []
+    for issuer in issuers:
+        crl_path = _resolve_crl_path_for_cert(org, issuer)
+        has_crl = bool(crl_path and crl_path.exists())
+
+        # Count revoked certificates issued by this issuer
+        revoked_count = sum(1 for c in certs if c["issuer_cert_id"] == issuer["id"] and c["status"] == "revoked")
+
+        # Get last updated timestamp from CRL file
+        last_updated = None
+        if has_crl and crl_path.exists():
+            try:
+                mtime = crl_path.stat().st_mtime
+                from datetime import datetime
+                last_updated = datetime.fromtimestamp(mtime).isoformat()
+            except Exception:
+                pass
+
+        result.append({
+            "issuer_name": issuer["cert_name"],
+            "cert_type": issuer["cert_type"],
+            "has_crl": has_crl,
+            "download_url": f"/organizations/{org_id}/crl/{issuer['cert_name']}",
+            "revoked_count": revoked_count,
+            "last_updated": last_updated
+        })
+    return result
+
+
 @app.get("/organizations/{org_id}/crl/download")
 async def download_org_crl(org_id: int):
     """
@@ -1316,98 +1358,6 @@ async def download_org_crl(org_id: int):
     )
 
 
-@app.get("/organizations/{org_id}/crl/bundle")
-async def download_org_crl_bundle(org_id: int):
-    """
-    Download bundled CRL file:
-    - preferred issuer CRL (intermediate first, then root)
-    - plus root CRL when preferred issuer is not root
-    """
-    org = db.get_organization_by_id(org_id)
-    if not org:
-        return Response(content="Organization not found", status_code=404)
-
-    preferred_issuer = _select_preferred_crl_issuer(org_id)
-    root_issuer = get_latest_active_root_ca_name(org_id)
-    if not preferred_issuer:
-        return Response(content="No active issuer found for CRL bundle", status_code=404)
-
-    issuer_names: list[str] = [preferred_issuer]
-    if root_issuer and root_issuer != preferred_issuer:
-        issuer_names.append(root_issuer)
-
-    crl_parts: list[bytes] = []
-    missing: list[str] = []
-    for issuer_name in issuer_names:
-        crl_path = _resolve_issuer_crl_path(org, org_id, issuer_name)
-        if not crl_path:
-            missing.append(issuer_name)
-            continue
-        crl_parts.append(file_crypto.read_encrypted(crl_path).strip())
-
-    if not crl_parts:
-        return Response(content=f"No CRL files available for bundle. Missing: {', '.join(missing)}", status_code=404)
-
-    bundle_name = f"crl_bundle_org_{org_id}.pem"
-    bundle_content = b"\n\n".join(crl_parts) + b"\n"
-    return Response(
-        content=bundle_content,
-        media_type="application/pkix-crl",
-        headers={"Content-Disposition": f'attachment; filename="{bundle_name}"'},
-    )
-
-
-@app.get("/organizations/{org_id}/crl/{issuer_name}/bundle")
-async def download_issuer_crl_bundle(org_id: int, issuer_name: str, issuer_cert_id: int | None = Query(default=None)):
-    """
-    Download bundled CRL for a specific issuer:
-    - issuer CRL
-    - plus root CRL when issuer is intermediate
-    """
-    org = db.get_organization_by_id(org_id)
-    if not org:
-        return Response(content="Organization not found", status_code=404)
-
-    certs = db.list_certificates_by_organization(org_id)
-    if issuer_cert_id is not None:
-        issuer_cert = next(
-            (c for c in certs if c["id"] == issuer_cert_id and c["cert_type"] in ("root", "intermediate")),
-            None,
-        )
-        if issuer_cert and issuer_cert["cert_name"] != issuer_name:
-            return Response(content="Issuer mismatch", status_code=400)
-    else:
-        issuer_cert = next(
-            (c for c in certs if c["cert_name"] == issuer_name and c["cert_type"] in ("root", "intermediate")),
-            None,
-        )
-    if not issuer_cert:
-        return Response(content="Issuer not found", status_code=404)
-
-    root_cert = next((c for c in certs if c["cert_type"] == "root" and c["status"] == "active"), None)
-    issuer_chain: list[dict] = [issuer_cert]
-    if issuer_cert["cert_type"] == "intermediate" and root_cert and root_cert["id"] != issuer_cert["id"]:
-        issuer_chain.append(root_cert)
-
-    crl_parts: list[bytes] = []
-    missing: list[str] = []
-    for cert in issuer_chain:
-        crl_path = _resolve_crl_path_for_cert(org, cert)
-        if not crl_path:
-            missing.append(f"{cert['cert_name']} ({cert['cert_type']})")
-            continue
-        crl_parts.append(file_crypto.read_encrypted(crl_path).strip())
-
-    if not crl_parts:
-        return Response(content=f"No CRL files available for bundle. Missing: {', '.join(missing)}", status_code=404)
-
-    bundle_name = f"crl_bundle_{issuer_name}.pem"
-    bundle_content = b"\n\n".join(crl_parts) + b"\n"
-    return Response(
-        content=bundle_content,
-        media_type="application/pkix-crl",
-        headers={"Content-Disposition": f'attachment; filename="{bundle_name}"'},
-    )
 
 
 @app.get("/organizations/{org_id}/certificates/{cert_id}/download", dependencies=[require_roles_config()])

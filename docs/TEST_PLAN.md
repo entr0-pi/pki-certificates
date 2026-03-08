@@ -24,10 +24,19 @@ Use this in order, and record each step as PASS/FAIL with screenshot + note.
 - [ ] Organization Isolation: create 2+ orgs and create certs in each.
 - [ ] Organization Isolation: verify org A's dashboard only shows org A's certs (no cross-org leakage).
 - [ ] Organization Isolation: try accessing org B's cert popup from org A via direct URL and confirm 403/error.
+- [ ] Organization Name Constraint: try creating org with name longer than 20 characters and confirm it's blocked by `maxlength` attribute.
+- [ ] Organization Name Constraint: verify character counter shows "X/20" as you type (e.g., "0/20", "5/20").
+- [ ] Organization Name Constraint: create org with exactly 20 characters and confirm success.
 - [ ] Open one org via `Manage`.
 - [ ] Confirm dashboard header, stats, and certificate table render.
 - [ ] Confirm `Create Certificate` button is visible for admin.
-- [ ] Open `CRL Downloads` menu and verify both links exist (`Latest CRL`, `CRL Bundle`).
+- [ ] CRL Distribution Cards: verify section loads with card-based grid layout (responsive 1-3 columns).
+- [ ] CRL Distribution Cards: verify each issuer card shows issuer name, type badge, last updated timestamp, and download button.
+- [ ] CRL Distribution Cards: for issuer with no revocations, verify "No revocations" text appears in subtle gray.
+- [ ] CRL Distribution Cards: for issuer with revocations, verify red "X revoked" badge appears with count.
+- [ ] CRL Distribution Cards: verify last updated timestamp is formatted as human-readable date/time (e.g., "3/8/2026, 2:30:45 PM").
+- [ ] CRL Distribution Cards: confirm individual issuer download buttons work.
+- [ ] CRL Distribution Cards: verify no "Download CRL Bundle" button exists (only individual issuer downloads).
 - [ ] Audit Trail (if UI displays audit logs): verify org creation is logged with timestamp and user identity.
 - [ ] Audit Trail (if UI displays audit logs): verify cert operations appear in org-level audit log (if available).
 - [ ] Click `Refresh` and confirm page reloads without errors.
@@ -62,10 +71,30 @@ Use this in order, and record each step as PASS/FAIL with screenshot + note.
 - [ ] Policy Enforcement - End-Entity: verify subject fields reflect locked/policy-enforced values.
 - [ ] Policy Enforcement - End-Entity: try selecting root CA as issuer and confirm error (end-entity must use intermediate).
 - [ ] Policy Enforcement - End-Entity: try selecting revoked intermediate as issuer and confirm error.
+- [ ] Policy Enforcement - End-Entity Defaults: verify `Days to expiry` field pre-fills with value from policy.json for selected cert type.
+- [ ] Policy Enforcement - End-Entity Defaults: verify EC curve dropdown shows correct default curve from policy (e.g., "Default curve (secp256r1)").
+- [ ] Policy Enforcement - End-Entity Defaults: switch from `Server` type to `Client` type and verify days and curve values update to client policy defaults.
+- [ ] Policy Enforcement - End-Entity Defaults: switch from `Client` back to `Server` and verify days and curve revert to server defaults.
+- [ ] SAN Validation - Real-time Feedback: in server cert SAN section, add a DNS entry that is valid (e.g., "example.com").
+- [ ] SAN Validation - Real-time Feedback: verify input border turns green (input-success class) when DNS is valid.
+- [ ] SAN Validation - Real-time Feedback: clear the DNS entry and verify border returns to normal (no green/red).
+- [ ] SAN Validation - Real-time Feedback: type an invalid DNS entry (e.g., "not a..domain") and verify border turns red (input-error class).
+- [ ] SAN Validation - Real-time Feedback: fix the invalid DNS entry and verify border turns green again.
+- [ ] SAN Validation - IP Type: add an IP SAN entry with valid IPv4 (e.g., "192.168.1.1") and verify green border.
+- [ ] SAN Validation - IP Type: add an invalid IPv4 (e.g., "256.1.1.1") and verify red border.
+- [ ] SAN Validation - IP Type: add a valid IPv6 entry (e.g., "2001:db8::1") and verify green border.
+- [ ] SAN Validation - EMAIL Type: add a valid email SAN (e.g., "admin@example.com") and verify green border.
+- [ ] SAN Validation - EMAIL Type: add an invalid email SAN (e.g., "not-an-email") and verify red border.
+- [ ] SAN Validation - URI Type: add a valid URI SAN (e.g., "https://example.com") and verify green border.
+- [ ] SAN Validation - URI Type: add an invalid URI SAN (e.g., "not-a-uri") and verify red border.
+- [ ] SAN Validation - Form Submission Block: add multiple SAN entries, leave one invalid (red border), and try to submit form.
+- [ ] SAN Validation - Form Submission Block: confirm form submission is blocked and error alert appears: "Please fix SAN entries (marked in red) before submitting."
+- [ ] SAN Validation - Form Submission Block: verify error alert auto-dismisses after 5 seconds.
+- [ ] SAN Validation - Form Submission Block: fix the invalid SAN entry and confirm form submission succeeds.
 - [ ] Policy Enforcement - End-Entity: verify SAN validation (DNS names, IP format) on server cert.
 - [ ] Policy Enforcement - End-Entity: verify email validation on email cert type.
-- [ ] Create one `server` certificate with SAN entries (test multiple SAN types).
-- [ ] Create one `client` certificate.
+- [ ] Create one `server` certificate with multiple SAN entries (test DNS, IP, and URI types) and verify all entries persist.
+- [ ] Create one `client` certificate with policy-driven defaults.
 - [ ] Create one `email` certificate with required email.
 - [ ] Create one `OCSP` certificate: select `Server` type, toggle `OCSP Responder`, verify SAN section is hidden.
 - [ ] Verify OCSP cert creation succeeds with no SAN entries.
@@ -119,16 +148,19 @@ Use this in order, and record each step as PASS/FAIL with screenshot + note.
 
 ## Phase 5: Revocation + CRL
 
-- [ ] On org dashboard, choose an active cert and click `Revoke`.
+- [ ] On org dashboard, note the current CRL Distribution cards showing "No revocations" for each issuer.
+- [ ] Choose an active cert and click `Revoke`.
 - [ ] In modal, test reason selection list (all options available).
 - [ ] Submit revocation with `keyCompromise`.
 - [ ] Confirm cert status becomes `revoked` in dashboard.
+- [ ] CRL Distribution Update: refresh the page and verify the issuer's CRL card now shows red "1 revoked" badge.
+- [ ] CRL Distribution Update: verify "last updated" timestamp has changed to current time.
 - [ ] Revocation Details: verify revocation reason is recorded in database/audit logs.
 - [ ] Revocation Details: try revoking the same cert again and confirm error or idempotent behavior.
 - [ ] Revocation Details: verify revoked cert no longer appears in issuer dropdown for new end-entity certs.
 - [ ] Revoke another active cert with a different reason (for example `superseded`).
-- [ ] Download org `Latest CRL` and confirm file is returned (PEM format).
-- [ ] Download org `CRL Bundle` and confirm archive is returned (ZIP with multiple CRLs).
+- [ ] CRL Distribution Update: refresh page and verify revoked count badge now shows "2 revoked".
+- [ ] Download org `Latest CRL` via individual issuer card download button and confirm file is returned (PEM format).
 - [ ] CRL Content Verification: open downloaded CRL and verify revoked cert serial numbers appear.
 - [ ] CRL Content Verification: verify CRL validity dates (`thisUpdate`, `nextUpdate`).
 - [ ] CRL Content Verification: verify CRL issuer matches expected CA.
@@ -174,6 +206,8 @@ Log out between roles and re-login each time.
 
 ## Phase 8: Negative/Validation Cases
 
+- [ ] Organization Name Length: try creating org with 21+ characters and confirm browser blocks input via `maxlength` attribute.
+- [ ] Organization Name Counter: verify character counter remains accurate when copy-pasting text.
 - [ ] Certificate Name Validation: try creating cert with duplicate name in same org and verify error (if enforced).
 - [ ] Certificate Name Validation: try creating cert with very long name and verify sanitization (only alphanumeric, `-`, `_`).
 - [ ] Certificate Name Validation: try creating cert with special chars (`!@#$%`) and verify they're stripped.
@@ -185,9 +219,15 @@ Log out between roles and re-login each time.
 - [ ] Renewal/Date Validation: try renewal with non-numeric days input and verify validation.
 - [ ] Certificate Chain Validation: try creating end-entity with revoked intermediate as issuer and verify error.
 - [ ] Certificate Chain Validation: try creating intermediate with revoked root as issuer and verify error.
-- [ ] SAN/Email Validation: try creating server cert with invalid SAN format and verify error.
+- [ ] SAN Validation - Empty SAN: create server cert with empty SAN section (no entries added) and confirm success.
+- [ ] SAN Validation - Invalid DNS: add invalid DNS SAN (red border) and try to submit, confirm form blocks submission.
+- [ ] SAN Validation - Invalid IP: add invalid IPv4 SAN (e.g., "999.1.1.1", red border) and verify form blocks submission.
+- [ ] SAN Validation - Invalid URI: add invalid URI SAN (no scheme, red border) and verify form blocks submission.
+- [ ] SAN Validation - Wildcard DNS: add valid wildcard DNS SAN (e.g., "*.example.com", green border) and confirm submission succeeds.
+- [ ] SAN Validation - Special Characters: try adding SAN with invalid special chars and verify red border.
 - [ ] SAN/Email Validation: try creating email cert without email and verify required-field error.
-- [ ] SAN/Email Validation: try creating server cert with duplicate SAN entries and verify handling.
+- [ ] Policy Defaults - Server to Client Switch: verify when switching cert types, the days and curve fields update (not manually entered defaults).
+- [ ] Policy Defaults - Manual Override: manually change the default days value after switching cert type, then switch types again and verify it reverts to policy default.
 - [ ] Authorization Violations: try direct URL to create cert page as `user` role and confirm 403/redirect.
 - [ ] Authorization Violations: try revoke endpoint as `user` and confirm 403.
 - [ ] Authorization Violations: try direct URL to org dashboard of different org as lower role (if multi-tenancy applies).
@@ -196,6 +236,11 @@ Log out between roles and re-login each time.
 - [ ] Session/Auth Edge Cases: log out mid-operation and confirm session is cleared.
 - [ ] PKCS#12 Prompt Negative Case: try opening the PKCS#12 password prompt for a non-client/non-email certificate and confirm the UI does not offer it.
 - [ ] PKCS#12 Prompt Negative Case: simulate or trigger a password-fetch failure and confirm the UI shows an error instead of a broken modal.
+- [ ] CRL Distribution Cards - Empty State: create org with no revocations and verify all issuer cards show "No revocations" text in gray.
+- [ ] CRL Distribution Cards - Hover Effect: hover over a CRL issuer card and verify shadow increases (transition-shadow, hover:shadow-lg).
+- [ ] CRL Distribution Cards - Responsive Layout: resize browser to mobile width and verify CRL cards stack to single column.
+- [ ] CRL Distribution Cards - Responsive Layout: resize to tablet width and verify cards display in 2 columns.
+- [ ] CRL Distribution Cards - Responsive Layout: resize to full width and verify cards display in 3 columns.
 
 ## Automated Test Coverage (Already Verified by pytest)
 

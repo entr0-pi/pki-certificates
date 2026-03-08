@@ -37,15 +37,6 @@
                                 Create Certificate
                             </a>
                             {% endif %}
-                            <div class="dropdown dropdown-end">
-                                <button tabindex="0" class="btn btn-outline btn-sm join-item">
-                                    CRL Downloads
-                                </button>
-                                <ul tabindex="0" class="dropdown-content menu bg-base-100 rounded-box z-[1] w-52 p-2 shadow border border-base-300">
-                                    <li><a href="/organizations/{{ organization.id }}/crl/download">Latest CRL</a></li>
-                                    <li><a href="/organizations/{{ organization.id }}/crl/bundle">CRL Bundle</a></li>
-                                </ul>
-                            </div>
                             <a href="/organizations/{{ organization.id }}/manage" class="btn btn-ghost btn-sm join-item">
                                 Refresh
                             </a>
@@ -118,9 +109,10 @@
                             <tr>
                                 <th>Name</th>
                                 <th>Type</th>
+                                <th>CN</th>
+                                <th>Issuer</th>
                                 <th>Created</th>
                                 <th>Status</th>
-                                <th>CN</th>
                                 <th>Expires</th>
                                 <th>Actions</th>
                             </tr>
@@ -149,13 +141,21 @@
                                     {% endif %}
                                 </td>
                                 <td><span class="badge badge-outline">{{ cert.cert_type }}</span></td>
+                                <td class="font-mono text-xs">{{ cert.subject_common_name or "-" }}</td>
+                                <td class="text-xs">
+                                    {% if cert.cert_type in ["root"] %}
+                                    <span class="text-base-content/50">-</span>
+                                    {% else %}
+                                    {% set issuer_cert = certificates|selectattr("id", "equalto", cert.issuer_cert_id)|first %}
+                                    {{ issuer_cert.cert_name if issuer_cert else "-" }}
+                                    {% endif %}
+                                </td>
                                 <td class="text-xs">{{ cert.created_at[:10] if cert.created_at else "-" }}</td>
                                 <td>
                                     <span class="badge {% if cert.status == 'active' %}badge-success{% elif cert.status == 'revoked' %}badge-error{% else %}badge-warning{% endif %}">
                                         {{ cert.status }}
                                     </span>
                                 </td>
-                                <td class="font-mono text-xs">{{ cert.subject_common_name or "-" }}</td>
                                 <td class="text-xs">
                                     <div class="flex flex-col gap-1">
                                         <span>{{ cert.not_after[:10] if cert.not_after else "-" }}</span>
@@ -199,6 +199,27 @@
                 {% else %}
                 <p class="text-base-content/70 italic">No certificates created yet.</p>
                 {% endif %}
+            </div>
+        </div>
+
+        <!-- CRL Distribution Card -->
+        <div class="card bg-base-100 shadow-xl mt-6">
+            <div class="card-body">
+                <h2 class="card-title">CRL Distribution</h2>
+                <p class="text-sm text-base-content/70 mb-4">Download Certificate Revocation Lists (CRL) for certificate verification.</p>
+
+                <div id="crlLoading" class="flex items-center justify-center py-6">
+                    <span class="loading loading-spinner loading-sm"></span>
+                    <span class="ml-2 text-sm">Loading CRLs...</span>
+                </div>
+
+                <div id="crlContent" class="hidden">
+                    <div id="crlIssuersList" class="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-5 gap-3"></div>
+                </div>
+
+                <div id="crlError" class="alert alert-warning hidden">
+                    <span>No CRLs available yet. Revoke a certificate first to generate CRLs.</span>
+                </div>
             </div>
         </div>
 
@@ -301,6 +322,71 @@
     </dialog>
 
     <script>
+        // CRL Distribution - fetch available CRLs
+        async function loadCrlList() {
+            const loading = document.getElementById("crlLoading");
+            const content = document.getElementById("crlContent");
+            const error = document.getElementById("crlError");
+            const issuersList = document.getElementById("crlIssuersList");
+
+            try {
+                const response = await fetch(`/api/organizations/{{ organization.id }}/crls`);
+                const crls = await response.json();
+
+                if (!Array.isArray(crls) || crls.length === 0) {
+                    loading.classList.add("hidden");
+                    error.classList.remove("hidden");
+                    return;
+                }
+
+                // Filter to issuers with CRLs
+                const availableCrls = crls.filter(c => c.has_crl);
+                if (availableCrls.length === 0) {
+                    loading.classList.add("hidden");
+                    error.classList.remove("hidden");
+                    return;
+                }
+
+                // Render issuers with landing-page style cards
+                issuersList.innerHTML = availableCrls.map(crl => {
+                    const lastUpdated = crl.last_updated ? new Date(crl.last_updated).toLocaleString() : "Never";
+                    return `
+                        <div class="card bg-base-200 shadow transition-shadow hover:shadow-lg duration-200">
+                            <div class="card-body p-3 gap-2">
+                                <div class="flex items-start justify-between gap-2">
+                                    <h3 class="font-semibold text-sm flex-1">${crl.issuer_name}</h3>
+                                    <div class="badge badge-outline badge-xs">${crl.cert_type}</div>
+                                </div>
+                                <div class="text-xs text-base-content/60">
+                                    Updated: ${lastUpdated}
+                                </div>
+                                <div class="text-xs">
+                                    ${crl.revoked_count > 0 ? `<span class="text-error font-semibold">${crl.revoked_count}</span> <span class="text-base-content/60">revoked</span>` : '<span class="text-base-content/50">No revocations</span>'}
+                                </div>
+                                <div class="card-actions justify-end">
+                                    <a href="${crl.download_url}" class="btn btn-ghost btn-xs" title="Download CRL" download>
+                                        <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
+                                        </svg>
+                                    </a>
+                                </div>
+                            </div>
+                        </div>
+                    `;
+                }).join("");
+
+                loading.classList.add("hidden");
+                content.classList.remove("hidden");
+            } catch (err) {
+                console.error("Failed to load CRL list:", err);
+                loading.classList.add("hidden");
+                error.classList.remove("hidden");
+            }
+        }
+
+        // Load CRL list on page load
+        document.addEventListener("DOMContentLoaded", loadCrlList);
+
         // Expiration thresholds from policy
         const EXPIRY_CRITICAL_DAYS = {{ critical_days }};
         const EXPIRY_WARNING_DAYS = {{ warning_days }};

@@ -123,8 +123,6 @@ Legend: `✓` allowed, `-` denied, `public` no auth required.
 |------|:-----:|:-------:|:----:|------|
 | `GET /organizations/{org_id}/crl/{issuer_name}` | public | public | public | Issuer CRL (public endpoint) |
 | `GET /organizations/{org_id}/crl/download` | public | public | public | Latest CRL (public endpoint) |
-| `GET /organizations/{org_id}/crl/bundle` | public | public | public | CRL bundle (public endpoint) |
-| `GET /organizations/{org_id}/crl/{issuer_name}/bundle` | public | public | public | Issuer CRL bundle (public endpoint) |
 
 ### Health and Diagnostics
 
@@ -132,6 +130,7 @@ Legend: `✓` allowed, `-` denied, `public` no auth required.
 |------|:-----:|:-------:|:----:|------|
 | `GET /health` | ✓ | ✓ | - | DB/system health |
 | `GET /api/check-consistency` | ✓ | ✓ | - | DB vs disk consistency check |
+| `GET /api/organizations/{org_id}/crls` | ✓ | ✓ | ✓ | List available CRLs per issuer |
 
 ## Detailed Route Reference
 
@@ -354,22 +353,6 @@ Legend: `✓` allowed, `-` denied, `public` no auth required.
 - Request JSON: none
 - Response JSON: none (CRL file download)
 
-### `GET /organizations/{org_id}/crl/bundle`
-- Auth required: no (public CRL endpoint for certificate validators)
-- Request JSON: none
-- Response JSON: none (CRL bundle file download)
-
-### `GET /organizations/{org_id}/crl/{issuer_name}/bundle`
-- Auth required: no (public CRL endpoint for certificate validators)
-- Request JSON: none
-- Query params (optional):
-```json
-{
-  "issuer_cert_id": 12
-}
-```
-- Response JSON: none (CRL bundle file download)
-
 ### `GET /health`
 - Auth required: yes
 - Request JSON: none
@@ -413,6 +396,36 @@ Legend: `✓` allowed, `-` denied, `public` no auth required.
   ]
 }
 ```
+
+### `GET /api/organizations/{org_id}/crls`
+- Auth required: yes
+- Request JSON: none
+- Response (example):
+```json
+[
+  {
+    "issuer_name": "root-ca",
+    "cert_type": "root",
+    "has_crl": true,
+    "download_url": "/organizations/1/crl/root-ca",
+    "revoked_count": 0,
+    "last_updated": "2026-03-08T14:30:45.123456"
+  },
+  {
+    "issuer_name": "intermediate-ca",
+    "cert_type": "intermediate",
+    "has_crl": true,
+    "download_url": "/organizations/1/crl/intermediate-ca",
+    "revoked_count": 3,
+    "last_updated": "2026-03-08T10:15:22.654321"
+  }
+]
+```
+- Response (empty example):
+```json
+[]
+```
+- Notes: Returns list of all CA issuers (root and intermediate) with CRL availability status, download URLs, revocation counts, and last update timestamps. Used by org dashboard to dynamically populate CRL distribution section with operational insights.
 
 ## Security Notes
 
