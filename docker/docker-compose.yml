@@ -1,5 +1,3 @@
-version: '3.8'
-
 services:
   pki:
     build:
@@ -9,26 +7,42 @@ services:
     ports:
       - "8000:8000"
     environment:
-      # Server configuration
+      # ===== Docker-specific hardcoded values (do not override in .env) =====
+
+      # Server binding for container networking
       PKI_HOST: 0.0.0.0
       PKI_PORT: 8000
-      PKI_LOG_LEVEL: INFO
-      # Storage paths explicitly mapped to Docker volumes
+
+      # Storage paths managed by Docker volumes (see volumes: section below)
       PKI_DATA_DIR: /app/data
       PKI_DB_PATH: /app/database/pki.db
+
+      # Logging level (can be overridden in .env)
+      PKI_LOG_LEVEL: INFO
+
+      # Cookie security for local development (set to true in production with HTTPS reverse proxy)
+      PKI_COOKIE_SECURE: "false"
+
+      # Base URL for issued certificates (hardcoded for local dev)
+      PKI_BASE_URL: http://localhost:8000
+
+    # Load secrets and other configuration from .env (copy from ../.env.example)
     env_file:
       - .env
+
     volumes:
       # Persistent storage for encrypted certificate artifacts
       - pki_data:/app/data
-      # Persistent storage for SQLite database
+      # Persistent storage for SQLite database file
       - pki_database:/app/database
+
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8000/healthz"]
       interval: 30s
       timeout: 10s
       retries: 3
       start_period: 10s
+
     restart: unless-stopped
 
 volumes:

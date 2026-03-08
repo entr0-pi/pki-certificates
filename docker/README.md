@@ -6,8 +6,9 @@ This directory contains Docker artifacts for deploying the PKI Management System
 
 - **Dockerfile** — Multi-stage build for production-ready container image
 - **docker-compose.yml** — Orchestration for local development and testing
-- **.env.example** — Template for environment configuration (committed to git)
-- **.env** — Your local secrets file (created by copying .env.example, excluded from git)
+- **.env** — Your local Docker secrets file (created by copying ../.env.example, excluded from git)
+
+See [../.env.example](../.env.example) for complete environment variable documentation and defaults.
 
 ## Quick Start
 
@@ -16,20 +17,28 @@ This directory contains Docker artifacts for deploying the PKI Management System
 ```bash
 cd docker/
 
-# Copy the template to create your local .env file
+# Copy the root .env.example to create your local .env file
 # (.env is excluded from git and should contain your actual secrets)
-cp .env.example .env
+cp ../.env.example .env
 
 # Edit .env with your specific values using a text editor:
 nano .env  # or your preferred editor
 
-# Required changes:
-# - PKI_ENCRYPTION_KEY: strong password for at-rest encryption (generate: openssl rand -base64 32)
-# - PKI_ENCRYPTION_SALT: random base64-encoded 32-byte salt (generate: openssl rand -base64 32)
-# - PKI_API_KEY_ADMIN: strong random value (32+ chars)
-# - PKI_API_KEY_MANAGER: strong random value (32+ chars)
-# - PKI_API_KEY_USER: strong random value (32+ chars)
+# Required changes (see ../.env.example for full documentation):
+# - PKI_ENCRYPTION_KEY: strong password for at-rest encryption
+#   Generate: openssl rand -base64 32
+# - PKI_ENCRYPTION_SALT: random base64-encoded 32-byte salt
+#   Generate: openssl rand -base64 32
+# - PKI_API_KEY_ADMIN, PKI_API_KEY_MANAGER, PKI_API_KEY_USER: strong random values (32+ chars)
+#   Generate: python -c "import secrets; print(secrets.token_urlsafe(32))"
 # - PKI_JWT_SECRET: strong random JWT signing secret (32+ chars)
+#   Generate: python -c "import secrets; print(secrets.token_urlsafe(32))"
+
+# Note: docker-compose.yml hardcodes certain Docker-specific values:
+# - PKI_HOST=0.0.0.0 (required for container networking)
+# - PKI_PORT=8000 (matches exposed port)
+# - PKI_DATA_DIR=/app/data and PKI_DB_PATH=/app/database/pki.db (managed by volumes)
+# - PKI_COOKIE_SECURE=false (for local development; set to true in production)
 ```
 
 ### 2. Run Locally with Docker Compose
@@ -108,13 +117,37 @@ fly deploy
 
 ## Environment Variables
 
-See [.env](.env) for complete documentation of all configuration options:
+See [../.env.example](../.env.example) for complete documentation of all configuration options.
 
-- **Encryption**: `PKI_ENCRYPTION_KEY`, `PKI_ENCRYPTION_SALT`
-- **Authentication**: `PKI_API_KEY_ADMIN`, `PKI_API_KEY_MANAGER`, `PKI_API_KEY_USER`, `PKI_JWT_SECRET`
-- **Server**: `PKI_HOST`, `PKI_PORT`, `PKI_BASE_URL`
-- **Logging**: `PKI_LOG_LEVEL` (DEBUG, INFO, WARNING, ERROR)
-- **Timeouts**: `PKI_SUBPROCESS_TIMEOUT_SECONDS`
+**Docker-specific settings** (hardcoded in docker-compose.yml, do not edit in .env):
+- `PKI_HOST=0.0.0.0` — Required for container networking
+- `PKI_PORT=8000` — Must match exposed port
+- `PKI_DATA_DIR=/app/data` — Managed by Docker volume `pki_data`
+- `PKI_DB_PATH=/app/database/pki.db` — Managed by Docker volume `pki_database`
+- `PKI_LOG_LEVEL=INFO` — Logging level (override in .env if needed)
+- `PKI_COOKIE_SECURE=false` — For local dev (set to true in production)
+
+**Secrets to configure in docker/.env** (required):
+- `PKI_ENCRYPTION_KEY` — At-rest encryption password
+- `PKI_ENCRYPTION_SALT` — PBKDF2 salt
+- `PKI_API_KEY_ADMIN`, `PKI_API_KEY_MANAGER`, `PKI_API_KEY_USER` — Role-based API keys
+- `PKI_JWT_SECRET` — JWT signing secret
+
+### Environment Variable Resolution Order
+
+Docker-compose loads variables in this precedence (highest to lowest):
+
+| Priority | Source | Used For |
+|----------|--------|----------|
+| 1 (Highest) | `environment:` in docker-compose.yml | Docker-specific hardcoded values (PKI_HOST, PKI_PORT, PKI_DATA_DIR, PKI_DB_PATH, PKI_COOKIE_SECURE, PKI_BASE_URL) |
+| 2 | `env_file: - .env` in docker-compose.yml | Secrets and deployment config (loaded from docker/.env) |
+| 3 | `docker/.env` file | Local development defaults and secrets (copied from ../‌.env.example) |
+| 4 (Lowest) | `ENV` in Dockerfile | Image-level fallback defaults (used only if running `docker run` without docker-compose.yml) |
+
+**In practice:**
+- docker-compose.yml values **override** docker/.env values
+- docker/.env provides fallback for any variables not set in docker-compose.yml
+- Dockerfile ENV only applies if container runs without docker-compose.yml
 
 ## Verification Checklist
 

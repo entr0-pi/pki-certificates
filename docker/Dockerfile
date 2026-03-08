@@ -1,6 +1,6 @@
 # Multi-stage build for PKI Management System
 # Stage 1: Python Dependencies
-FROM python:3.12-slim as py-deps
+FROM python:3.12-slim AS py-deps
 
 WORKDIR /build
 RUN apt-get update && apt-get install -y --no-install-recommends \
@@ -13,7 +13,7 @@ ENV PATH="/opt/venv/bin:$PATH"
 RUN pip install --no-cache-dir -r requirements.txt
 
 # Stage 2: Frontend CSS Build
-FROM node:18-alpine as frontend-build
+FROM node:18-alpine AS frontend-build
 
 WORKDIR /app
 COPY package.json package-lock.json tailwind.config.js ./
@@ -44,12 +44,19 @@ COPY --chown=pki:pki scripts/start_webapp.sh /app/
 # Override CSS bundle with freshly built version from frontend-build stage
 COPY --from=frontend-build --chown=pki:pki /app/frontend/static/vendor/bundle.css /app/frontend/static/vendor/
 
-# Set environment defaults
-# Note: PKI_DATA_DIR and PKI_DB_PATH are explicitly set to match volume mount points
+# Set image-level environment defaults
+# These are fallback values used when running the container directly (docker run).
+# For docker-compose.yml deployments, values are overridden by:
+#   1. docker-compose.yml environment section (highest priority)
+#   2. docker/.env file loaded via env_file directive
+# Storage paths (PKI_DATA_DIR, PKI_DB_PATH) must match volume mount points (/app/data, /app/database)
+# See ../docker-compose.yml and ../.env.example for deployment configuration.
 ENV PATH="/opt/venv/bin:$PATH" \
     PKI_HOST=0.0.0.0 \
     PKI_PORT=8000 \
     PKI_LOG_LEVEL=INFO \
+    PKI_COOKIE_SECURE="false" \
+    PKI_BASE_URL=http://localhost:8000 \
     PKI_DATA_DIR=/app/data \
     PKI_DB_PATH=/app/database/pki.db
 
