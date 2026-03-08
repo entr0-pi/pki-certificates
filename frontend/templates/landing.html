@@ -330,17 +330,21 @@
                 <div class="form-control">
                     <label class="label">
                         <span class="label-text font-semibold">Organization Name *</span>
-                        <span class="label-text-alt form-hint-alt">Human-readable name</span>
+                        <span class="label-text-alt form-hint-alt">Max 20 characters</span>
                     </label>
                     <input
                         type="text"
                         name="org_display_name"
                         id="org_display_name"
-                        placeholder="e.g., Acme Corporation"
+                        placeholder="e.g., Acme Corp"
                         class="input input-bordered"
+                        maxlength="20"
                         required
                         autocomplete="organization"
                     />
+                    <label class="label">
+                        <span class="label-text-alt"><span id="orgNameCount">0</span>/20 characters</span>
+                    </label>
                 </div>
 
                 <div class="divider my-4"></div>
@@ -381,6 +385,17 @@
         </form>
     </dialog>
 
+    <script>
+        // Organization name character counter
+        const orgNameInput = document.getElementById("org_display_name");
+        const orgNameCount = document.getElementById("orgNameCount");
+
+        if (orgNameInput) {
+            orgNameInput.addEventListener("input", () => {
+                orgNameCount.textContent = orgNameInput.value.length;
+            });
+        }
+    </script>
     <script src="/static/consistency-check.js"></script>
     <script src="/static/theme-toggle.js"></script>
 </body>

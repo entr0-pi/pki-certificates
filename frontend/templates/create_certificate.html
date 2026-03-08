@@ -356,6 +356,8 @@
     </div>
 
     <script>
+        const endEntityPolicies = {{ end_entity_policies|tojson }};
+
         const tabs = Array.from(document.querySelectorAll("[data-mode]"));
         const panels = {
             root: document.getElementById("panel-root"),
@@ -444,8 +446,9 @@
                 }
                 // Update default days based on cert type and recalculate enddate
                 const daysInput = document.querySelector('#days-input-end-entity input[data-type="days"]');
-                if (daysInput) {
-                    daysInput.value = this.checked ? "365" : "{{ default_days_end_entity }}";
+                if (daysInput && endEntityPolicies) {
+                    const certType = this.checked ? "ocsp" : "server";
+                    daysInput.value = endEntityPolicies[certType].days;
                     // Trigger input event to recalculate enddate
                     daysInput.dispatchEvent(new Event('input', { bubbles: true }));
                 }
@@ -468,6 +471,24 @@
         function setEndEntityType(type) {
             if (!eeType) return;
             eeType.value = type;
+
+            // Update default days and EC curve from policy
+            if (endEntityPolicies[type]) {
+                const daysInput = document.querySelector('#days-input-end-entity input[data-type="days"]');
+                const eccurveSelect = document.querySelector('#panel-end-entity select[name="eccurve"]');
+                if (daysInput) {
+                    daysInput.value = endEntityPolicies[type].days;
+                    daysInput.dispatchEvent(new Event('input', { bubbles: true }));
+                }
+                if (eccurveSelect) {
+                    // Update the default option text to show the correct curve
+                    const defaultOption = eccurveSelect.querySelector('option[value=""]');
+                    if (defaultOption) {
+                        defaultOption.textContent = `Default curve (${endEntityPolicies[type].curve})`;
+                    }
+                    eccurveSelect.value = "";
+                }
+            }
 
             // Show OCSP toggle only for server type
             if (ocspToggleContainer) {
@@ -510,16 +531,59 @@
         }
         eeButtons.forEach((b) => b.addEventListener("click", () => setEndEntityType(b.dataset.eeType)));
 
+        function validateSanValue(type, value) {
+            if (!value || !value.trim()) return true; // Empty is OK (user can delete)
+            const v = value.trim();
+
+            if (type === "DNS") {
+                // Allow simple names, FQDN, and wildcards
+                // Pattern: (*.)?label(.label)*
+                const dnsPattern = /^(\*\.)?([a-zA-Z0-9]([a-zA-Z0-9\-]{0,61}[a-zA-Z0-9])?\.)*[a-zA-Z0-9]([a-zA-Z0-9\-]{0,61}[a-zA-Z0-9])?$/;
+                return dnsPattern.test(v);
+            } else if (type === "IP") {
+                // Try to parse as IPv4 or IPv6 using regex
+                const ipv4 = /^(\d{1,3}\.){3}\d{1,3}$/;
+                const ipv6 = /^([\da-fA-F]{0,4}:){2,7}[\da-fA-F]{0,4}$/;
+                if (ipv4.test(v)) {
+                    const parts = v.split(".").map(p => parseInt(p));
+                    return parts.every(p => p >= 0 && p <= 255);
+                }
+                return ipv6.test(v);
+            } else if (type === "EMAIL") {
+                // Basic email: user@domain.tld
+                const emailPattern = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+                return emailPattern.test(v);
+            } else if (type === "URI") {
+                // Must start with a valid scheme
+                const uriPattern = /^(https?|ldap|ldaps|ftp|ftps):\/\/.+/i;
+                return uriPattern.test(v);
+            }
+            return false;
+        }
+
         function addSanRow(type = "DNS", value = "") {
             const row = document.createElement("div");
             row.className = "flex gap-2";
             row.innerHTML = `<select class="select select-bordered select-sm w-24"><option>DNS</option><option>IP</option><option>URI</option><option>EMAIL</option></select><input class="input input-bordered input-sm flex-1" value="${value}" placeholder="value"><button type="button" class="btn btn-sm btn-ghost text-error">x</button>`;
             const btn = row.querySelector("button");
             const sel = row.querySelector("select");
+            const inp = row.querySelector("input");
             sel.value = type;
             btn.addEventListener("click", () => { row.remove(); buildSan(); });
-            row.querySelector("input").addEventListener("input", () => { buildSan(); });
-            sel.addEventListener("change", () => { buildSan(); });
+            inp.addEventListener("input", () => {
+                const currentType = sel.value;
+                const isValid = validateSanValue(currentType, inp.value);
+                inp.classList.toggle("input-error", !isValid && inp.value.trim());
+                inp.classList.toggle("input-success", isValid && inp.value.trim());
+                buildSan();
+            });
+            sel.addEventListener("change", () => {
+                const currentType = sel.value;
+                const isValid = validateSanValue(currentType, inp.value);
+                inp.classList.toggle("input-error", !isValid && inp.value.trim());
+                inp.classList.toggle("input-success", isValid && inp.value.trim());
+                buildSan();
+            });
             document.getElementById("sanRows").appendChild(row);
             buildSan();
         }
@@ -536,6 +600,37 @@
         }
 
         document.getElementById("issuerName")?.addEventListener("change", () => { applyEndEntityLocks(); });
+
+        function validateAllSans() {
+            const rows = Array.from(document.querySelectorAll("#sanRows > div"));
+            for (const row of rows) {
+                const sel = row.querySelector("select");
+                const inp = row.querySelector("input");
+                const type = sel.value;
+                const value = inp.value.trim();
+                if (value && !validateSanValue(type, value)) {
+                    inp.classList.add("input-error");
+                    inp.focus();
+                    return false;
+                }
+            }
+            return true;
+        }
+
+        const endEntityForm = document.getElementById("endEntityForm");
+        if (endEntityForm) {
+            endEntityForm.addEventListener("submit", (e) => {
+                if (!validateAllSans()) {
+                    e.preventDefault();
+                    // Show error alert (form already has error styling via input-error class)
+                    const alert = document.createElement("div");
+                    alert.className = "alert alert-error mb-4";
+                    alert.innerHTML = '<span>Please fix SAN entries (marked in red) before submitting.</span>';
+                    endEntityForm.insertAdjacentElement("beforebegin", alert);
+                    setTimeout(() => alert.remove(), 5000);
+                }
+            });
+        }
 
         document.querySelectorAll(".create-another-btn").forEach((btn) => {
             btn.addEventListener("click", () => {

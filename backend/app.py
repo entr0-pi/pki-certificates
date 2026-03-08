@@ -977,6 +977,9 @@ async def create_certificate_page(request: Request, org_id: int):
     root_policy = _load_role_policy("root")
     intermediate_policy = _load_role_policy("intermediate")
     server_policy = _load_role_policy("end-entity-server")
+    client_policy = _load_role_policy("end-entity-client")
+    email_policy = _load_role_policy("end-entity-email")
+    ocsp_policy = _load_role_policy("end-entity-ocsp")
 
     return templates.TemplateResponse(
         "create_certificate.html",
@@ -998,6 +1001,24 @@ async def create_certificate_page(request: Request, org_id: int):
             "default_curve_root": root_policy.get("ec_curve", "secp384r1"),
             "default_curve_intermediate": intermediate_policy.get("ec_curve", "secp384r1"),
             "default_curve_end_entity": server_policy.get("ec_curve", "secp256r1"),
+            "end_entity_policies": {
+                "server": {
+                    "days": int(server_policy["DEFAULT_DAYS"]),
+                    "curve": server_policy.get("ec_curve", "secp256r1"),
+                },
+                "client": {
+                    "days": int(client_policy["DEFAULT_DAYS"]),
+                    "curve": client_policy.get("ec_curve", "secp384r1"),
+                },
+                "email": {
+                    "days": int(email_policy["DEFAULT_DAYS"]),
+                    "curve": email_policy.get("ec_curve", "secp384r1"),
+                },
+                "ocsp": {
+                    "days": int(ocsp_policy["DEFAULT_DAYS"]),
+                    "curve": ocsp_policy.get("ec_curve", "secp256r1"),
+                },
+            },
         },
     )
 
