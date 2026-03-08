@@ -7,6 +7,8 @@ Web-based PKI management for root, intermediate, and end-entity certificates (se
 You can run the application directly from the published container image without building it locally.
 
 ```bash
+mkdir my-pki
+cd my-pki
 nano docker-compose.yml
 # copy/past the one in /docker + adapt at will
 nano .env
