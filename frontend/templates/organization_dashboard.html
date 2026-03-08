@@ -363,12 +363,13 @@
                                 <div class="text-xs">
                                     ${crl.revoked_count > 0 ? `<span class="text-error font-semibold">${crl.revoked_count}</span> <span class="text-base-content/60">revoked</span>` : '<span class="text-base-content/50">No revocations</span>'}
                                 </div>
-                                <div class="card-actions justify-end">
+                                <div class="flex items-center justify-between gap-2">
                                     <a href="${crl.download_url}" class="btn btn-ghost btn-xs" title="Download CRL" download>
                                         <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                                             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
                                         </svg>
                                     </a>
+                                    ${crl.issuer_status === 'revoked' ? '<div class="badge badge-error badge-sm">Revoked</div>' : ''}
                                 </div>
                             </div>
                         </div>

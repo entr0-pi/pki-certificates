@@ -1319,6 +1319,7 @@ async def list_organization_crls(org_id: int, dependencies=[require_roles_config
         result.append({
             "issuer_name": issuer["cert_name"],
             "cert_type": issuer["cert_type"],
+            "issuer_status": issuer.get("status", "unknown"),
             "has_crl": has_crl,
             "download_url": f"/organizations/{org_id}/crl/{issuer['cert_name']}",
             "revoked_count": revoked_count,
