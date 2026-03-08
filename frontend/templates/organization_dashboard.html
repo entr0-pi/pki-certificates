@@ -98,9 +98,10 @@
                         <span class="label-text text-xs text-base-content/60">Expiry Window</span>
                         <select id="expiryFilter" class="select select-bordered select-sm">
                             <option value="">All</option>
-                            <option value="critical">0-30d</option>
-                            <option value="warning">31-90d</option>
-                            <option value="healthy">90d+</option>
+                            <option value="critical">0-{{ critical_days }}d</option>
+                            <option value="warning">{{ critical_days + 1 }}-{{ warning_days }}d</option>
+                            <option value="info">{{ warning_days + 1 }}-{{ expiration_days }}d</option>
+                            <option value="healthy">{{ expiration_days + 1 }}d+</option>
                             <option value="expired">Expired</option>
                         </select>
                     </label>
@@ -302,7 +303,8 @@
     <script>
         // Expiration thresholds from policy
         const EXPIRY_CRITICAL_DAYS = {{ critical_days }};
-        const EXPIRY_WARNING_DAYS = {{ expiration_days }};
+        const EXPIRY_WARNING_DAYS = {{ warning_days }};
+        const EXPIRY_ALERT_WINDOW_DAYS = {{ expiration_days }};
 
         const revokeModal = document.getElementById("revokeModal");
         const revokeForm = document.getElementById("revokeForm");
@@ -327,6 +329,7 @@
             if (days <= 0) return "expired";
             if (days <= EXPIRY_CRITICAL_DAYS) return "critical";
             if (days <= EXPIRY_WARNING_DAYS) return "warning";
+            if (days <= EXPIRY_ALERT_WINDOW_DAYS) return "info";
             return "healthy";
         }
 
@@ -343,6 +346,7 @@
                 if (bucket === "expired") badge.className = "expiry-badge badge badge-sm badge-error";
                 else if (bucket === "critical") badge.className = "expiry-badge badge badge-sm badge-error";
                 else if (bucket === "warning") badge.className = "expiry-badge badge badge-sm badge-warning";
+                else if (bucket === "info") badge.className = "expiry-badge badge badge-sm badge-info";
                 else badge.className = "expiry-badge badge badge-sm badge-success";
                 badge.textContent = bucket;
             });
@@ -376,4 +380,3 @@
     <script src="/static/theme-toggle.js"></script>
 </body>
 </html>
-

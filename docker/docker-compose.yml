@@ -16,13 +16,13 @@ services:
       PKI_DATA_DIR: /app/data
       PKI_DB_PATH: /app/database/pki.db
 
-      # Logging level (can be overridden in .env)
+      # Logging level
       PKI_LOG_LEVEL: INFO
 
       # Cookie security for local development (set to true in production with HTTPS reverse proxy)
       PKI_COOKIE_SECURE: "false"
 
-      # Base URL for issued certificates (hardcoded for local dev)
+      # Base URL for issued certificates
       PKI_BASE_URL: http://localhost:8000
 
     # Load secrets and other configuration from .env (copy from ../.env.example)

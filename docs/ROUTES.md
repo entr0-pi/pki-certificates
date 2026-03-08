@@ -68,7 +68,7 @@ Example:
 
 ## Role Matrix by Route Group
 
-> **⚠️ Source of Truth**: The tables below reflect the current `backend/rbac.json` configuration. For authoritative role-based access control rules, always refer to `backend/rbac.json` directly. These tables may become outdated if `rbac.json` is modified without regenerating this documentation.
+> **⚠️ Source of Truth**: The tables below reflect the current `backend/config/rbac.json` configuration. For authoritative role-based access control rules, always refer to `backend/config/rbac.json` directly. These tables may become outdated if `rbac.json` is modified without regenerating this documentation.
 
 Legend: `✓` allowed, `-` denied, `public` no auth required.
 
@@ -113,7 +113,8 @@ Legend: `✓` allowed, `-` denied, `public` no auth required.
 | Route | admin | manager | user | Notes |
 |------|:-----:|:-------:|:----:|------|
 | `POST /organizations/{org_id}/certificates/{cert_id}/revoke` | ✓ | - | - | Revoke certificate |
-| `GET /organizations/{org_id}/certificates/{cert_id}/download` | ✓ | ✓ | ✓ | Download cert (`pem`,`p12`,`chain`) |
+| `GET /organizations/{org_id}/certificates/{cert_id}/download` | ✓ | ✓ | - | Download cert (`pem`,`p12`,`chain`) |
+| `GET /organizations/{org_id}/certificates/{cert_id}/p12-password` | ✓ | ✓ | - | Retrieve PKCS#12 export password |
 | `GET /organizations/{org_id}/certificates/{cert_id}/private-key/plain` | ✓ | - | - | Download private key |
 
 ### CRL Routes
@@ -130,7 +131,7 @@ Legend: `✓` allowed, `-` denied, `public` no auth required.
 | Route | admin | manager | user | Notes |
 |------|:-----:|:-------:|:----:|------|
 | `GET /health` | ✓ | ✓ | - | DB/system health |
-| `GET /api/check-consistency` | ✓ | ✓ | ✓ | DB vs disk consistency check |
+| `GET /api/check-consistency` | ✓ | ✓ | - | DB vs disk consistency check |
 
 ## Detailed Route Reference
 
@@ -321,6 +322,16 @@ Legend: `✓` allowed, `-` denied, `public` no auth required.
 ```
 - Allowed `format`: `pem`, `p12`, `chain`
 - Response JSON: none (file download)
+
+### `GET /organizations/{org_id}/certificates/{cert_id}/p12-password`
+- Auth required: yes
+- Request JSON: none
+- Response (example):
+```json
+{
+  "password": "generated-export-password"
+}
+```
 
 ### `GET /organizations/{org_id}/certificates/{cert_id}/private-key/plain`
 - Auth required: yes

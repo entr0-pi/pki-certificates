@@ -576,8 +576,6 @@ ssl_session_timeout 10m;
 
 **Do not open public GitHub issues for security vulnerabilities.**
 
-Instead, email: `security@example.com` (configure before deployment)
-
 Include:
 - Vulnerability description
 - Steps to reproduce
@@ -688,5 +686,3 @@ Each operation checks role before execution.
 - [CWE/SANS Top 25](https://cwe.mitre.org/top25/)
 
 ---
-
-**For questions or security concerns, contact**: `security@example.com`

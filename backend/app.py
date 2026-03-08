@@ -904,6 +904,7 @@ async def manage_organization(request: Request, org_id: int):
         ui_policy = request.app.state.ui_policy
         dashboard_policy = ui_policy.get("dashboard", {})
         expiration_days = dashboard_policy.get("alert_window_days", 90)
+        warning_days = dashboard_policy.get("warning_days", 60)
         critical_days = dashboard_policy.get("critical_days", 30)
 
         stats = db.get_organization_stats(org_id)
@@ -923,6 +924,7 @@ async def manage_organization(request: Request, org_id: int):
                 "role": getattr(request.state, "role", "user"),
                 "ui_permissions": _build_ui_permissions(request, getattr(request.state, "role", "user")),
                 "expiration_days": expiration_days,
+                "warning_days": warning_days,
                 "critical_days": critical_days,
             },
         )

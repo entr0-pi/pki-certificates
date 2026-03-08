@@ -1,0 +1,19 @@
+{
+  "org_dir": "org_demo_9f3",
+  "cert_name": "ocsp-responder-01",
+  "artifact_name": "8e4a1f7b-3c9e-4d2b-a7f5-1e9c3d2b4a6f",
+  "cert_type": "ocsp",
+  "C": "US",
+  "ST": "Virginia",
+  "L": "Ashburn",
+  "O": "Nimbus Labs",
+  "OU": "Security Operations",
+  "CN": "Nimbus Labs OCSP Responder 01",
+  "email": "ocsp@nimbus-labs.example",
+  "subjectAltName": "URI:http://ocsp.nimbus-labs.example",
+  "issuer_name": "edge_issuing_ca_01",
+  "issuer_artifact_name": "c4d2b9c1-9a0f-4f74-a4af-cd9e4d1439d2",
+  "issuer_type": "intermediate",
+  "eccurve": "secp256r1",
+  "enddate": "20271231235959Z"
+}
