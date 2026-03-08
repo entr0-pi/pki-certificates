@@ -291,48 +291,42 @@
         {% if perms.get("can_download_cert", False) %}
         <div class="card bg-base-100 shadow">
             <div class="card-body p-5">
-                <p class="section-title">Download</p>
-                <div class="grid grid-cols-1 sm:grid-cols-{{ 3 if certificate.cert_type in ['client', 'email'] else 2 }} gap-3 mb-4">
-                    <div class="bg-base-200 rounded-box p-4">
+                <p class="section-title">Download Formats</p>
+                <div class="space-y-4">
+                    <div class="pb-3 border-b border-base-300">
                         <p class="font-semibold text-sm">PEM Certificate</p>
-                        <p class="text-xs text-base-content/55 mt-0.5">Public certificate in Base64 PEM format. Use for web servers and most tools.</p>
+                        <p class="text-xs text-base-content/55 mt-0.5 mb-2">Public certificate in Base64 PEM format. Use for web servers and most tools.</p>
+                        <a href="/organizations/{{ organization.id }}/certificates/{{ certificate.id }}/download?format=pem" class="btn btn-primary btn-sm">
+                            <svg xmlns="http://www.w3.org/2000/svg" class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                                <path stroke-linecap="round" stroke-linejoin="round" d="M3 16.5v2.25A2.25 2.25 0 0 0 5.25 21h13.5A2.25 2.25 0 0 0 21 18.75V16.5M16.5 12 12 16.5m0 0L7.5 12m4.5 4.5V3" />
+                            </svg>
+                            Download PEM
+                        </a>
                     </div>
 
                     {% if certificate.cert_type in ["client", "email"] %}
-                    <div class="bg-base-200 rounded-box p-4">
+                    <div class="pb-3 border-b border-base-300">
                         <p class="font-semibold text-sm">PKCS#12 Bundle</p>
-                        <p class="text-xs text-base-content/55 mt-0.5">Certificate + private key in a password-protected binary bundle (.p12/.pfx).</p>
+                        <p class="text-xs text-base-content/55 mt-0.5 mb-2">Certificate + private key in a password-protected binary bundle (.p12/.pfx).</p>
+                        <button type="button" class="btn btn-secondary btn-sm" onclick="showP12Password({{ organization.id }}, {{ certificate.id }})">
+                            <svg xmlns="http://www.w3.org/2000/svg" class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                                <path stroke-linecap="round" stroke-linejoin="round" d="M3 16.5v2.25A2.25 2.25 0 0 0 5.25 21h13.5A2.25 2.25 0 0 0 21 18.75V16.5M16.5 12 12 16.5m0 0L7.5 12m4.5 4.5V3" />
+                            </svg>
+                            Download P12
+                        </button>
                     </div>
                     {% endif %}
 
-                    <div class="bg-base-200 rounded-box p-4">
+                    <div>
                         <p class="font-semibold text-sm">Full Chain</p>
-                        <p class="text-xs text-base-content/55 mt-0.5">Certificate + all intermediate CAs concatenated. Required for TLS chain validation.</p>
+                        <p class="text-xs text-base-content/55 mt-0.5 mb-2">Certificate + all intermediate CAs concatenated. Required for TLS chain validation.</p>
+                        <a href="/organizations/{{ organization.id }}/certificates/{{ certificate.id }}/download?format=chain" class="btn btn-accent btn-sm">
+                            <svg xmlns="http://www.w3.org/2000/svg" class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                                <path stroke-linecap="round" stroke-linejoin="round" d="M3 16.5v2.25A2.25 2.25 0 0 0 5.25 21h13.5A2.25 2.25 0 0 0 21 18.75V16.5M16.5 12 12 16.5m0 0L7.5 12m4.5 4.5V3" />
+                            </svg>
+                            Download Chain
+                        </a>
                     </div>
-                </div>
-                <div class="flex gap-3 flex-wrap sm:flex-nowrap">
-                    <a href="/organizations/{{ organization.id }}/certificates/{{ certificate.id }}/download?format=pem" class="btn btn-primary btn-sm flex-1">
-                        <svg xmlns="http://www.w3.org/2000/svg" class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
-                            <path stroke-linecap="round" stroke-linejoin="round" d="M3 16.5v2.25A2.25 2.25 0 0 0 5.25 21h13.5A2.25 2.25 0 0 0 21 18.75V16.5M16.5 12 12 16.5m0 0L7.5 12m4.5 4.5V3" />
-                        </svg>
-                        Download PEM
-                    </a>
-
-                    {% if certificate.cert_type in ["client", "email"] %}
-                    <button type="button" class="btn btn-secondary btn-sm flex-1" onclick="showP12Password({{ organization.id }}, {{ certificate.id }})">
-                        <svg xmlns="http://www.w3.org/2000/svg" class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
-                            <path stroke-linecap="round" stroke-linejoin="round" d="M3 16.5v2.25A2.25 2.25 0 0 0 5.25 21h13.5A2.25 2.25 0 0 0 21 18.75V16.5M16.5 12 12 16.5m0 0L7.5 12m4.5 4.5V3" />
-                        </svg>
-                        Download P12
-                    </button>
-                    {% endif %}
-
-                    <a href="/organizations/{{ organization.id }}/certificates/{{ certificate.id }}/download?format=chain" class="btn btn-accent btn-sm flex-1">
-                        <svg xmlns="http://www.w3.org/2000/svg" class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
-                            <path stroke-linecap="round" stroke-linejoin="round" d="M3 16.5v2.25A2.25 2.25 0 0 0 5.25 21h13.5A2.25 2.25 0 0 0 21 18.75V16.5M16.5 12 12 16.5m0 0L7.5 12m4.5 4.5V3" />
-                        </svg>
-                        Download Chain
-                    </a>
                 </div>
             </div>
         </div>
