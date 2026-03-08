@@ -1,13 +1,12 @@
+
 services:
   pki:
-    build:
-      context: ..
-      dockerfile: docker/Dockerfile
-    container_name: pki-app
+    image: ghcr.io/entr0-pi/pki-certificates:latest
+    container_name: pki
     ports:
       - "8000:8000"
     environment:
-      # ===== Docker-specific hardcoded values (do not override in .env) =====
+      # ===== Docker-specific values =====
 
       # Server binding for container networking
       PKI_HOST: 0.0.0.0
@@ -44,6 +43,7 @@ services:
       start_period: 10s
 
     restart: unless-stopped
+
 
 volumes:
   pki_data:

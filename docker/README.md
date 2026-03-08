@@ -84,37 +84,6 @@ The PKI app uses **SQLite + local encrypted filesystem** and **must run as a sin
 - Secrets loaded from environment variables
 - All certificate artifacts encrypted at rest
 
-## Cloud Deployment
-
-Suitable platforms for single-instance with persistent volumes:
-
-- **Fly.io** — Persistent volumes via `fly volumes`
-- **Render** — Persistent disk service
-- **Railway.app** — Persistent volumes
-- **GCP Cloud Run** — With Cloud Filestore or Persistent Disk
-- **AWS ECS** — Single task with EFS volume
-- **Self-hosted** — Any VPS with Docker (DigitalOcean, Hetzner, Linode)
-
-### Example: Fly.io Deployment
-
-```bash
-# 1. Create app
-fly launch
-
-# 2. Create persistent volumes
-fly volumes create pki_data --size 10
-fly volumes create pki_database --size 5
-
-# 3. Copy .env values to fly secrets
-fly secrets set PKI_ENCRYPTION_KEY="your-key" \
-  PKI_ENCRYPTION_SALT="your-salt" \
-  PKI_API_KEY_ADMIN="your-admin-key" \
-  ...
-
-# 4. Deploy
-fly deploy
-```
-
 ## Environment Variables
 
 See [../.env.example](../.env.example) for complete documentation of all configuration options.
