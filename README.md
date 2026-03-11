@@ -225,3 +225,5 @@ Install optional test dependencies from `tests/requirements-dev.txt` if your env
 - Use HTTPS in production and set `PKI_COOKIE_SECURE=true`.
 - Back up both the database and encrypted certificate storage.
 - Review [docs/SECURITY.md](docs/SECURITY.md) before deploying outside local development.
+
+Last update: 2026 03 10
