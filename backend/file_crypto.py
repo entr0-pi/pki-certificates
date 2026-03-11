@@ -1,7 +1,10 @@
 """
-Encryption at rest for certificate artifacts using Fernet (AES-128-CBC + HMAC-SHA256).
+Encryption at rest for certificate artifacts using AES-256-GCM.
 
-All files in /data are encrypted using a key derived from ENCRYPTION_KEY environment variable.
+Key derived via PBKDF2HMAC(SHA-256, 480,000 iterations) from PKI_ENCRYPTION_KEY
+and PKI_ENCRYPTION_SALT environment variables. Derived key is cached at startup.
+
+File format: [ 12-byte nonce ][ AES-256-GCM ciphertext + 16-byte tag ]
 """
 
 import os
@@ -9,64 +12,53 @@ import base64
 from pathlib import Path
 
 from dotenv import load_dotenv
-from cryptography.fernet import Fernet
 from cryptography.hazmat.primitives.kdf.pbkdf2 import PBKDF2HMAC
 from cryptography.hazmat.primitives import hashes
+from cryptography.hazmat.primitives.ciphers.aead import AESGCM
 
-# Load .env file if it exists
 load_dotenv()
 
-_ITERATIONS = 480_000
-_fernet: Fernet | None = None
+_ITERATIONS   = 480_000
+_NONCE_LENGTH = 12      # bytes (GCM standard)
+_key: bytes | None = None
 
 
-def _get_fernet() -> Fernet:
-    """Get or initialize the Fernet cipher using PKI_ENCRYPTION_KEY and PKI_ENCRYPTION_SALT from environment."""
-    global _fernet
-    if _fernet is None:
-        key = os.environ.get("PKI_ENCRYPTION_KEY", "").strip()
-        if not key:
+def _get_key() -> bytes:
+    """Derive and cache the AES-256 key using PBKDF2HMAC from env vars."""
+    global _key
+    if _key is None:
+        password = os.environ.get("PKI_ENCRYPTION_KEY", "").strip()
+        if not password:
             raise RuntimeError(
-                "PKI_ENCRYPTION_KEY not set in environment. "
-                "Please set PKI_ENCRYPTION_KEY in .env or as an environment variable."
+                "PKI_ENCRYPTION_KEY not set in environment."
             )
-
-        # Load salt from environment (generated once at installation time)
         salt_b64 = os.environ.get("PKI_ENCRYPTION_SALT", "").strip()
         if not salt_b64:
             raise RuntimeError(
-                "PKI_ENCRYPTION_SALT not set in environment. "
-                "Generate a random salt with: openssl rand -base64 32 "
-                "and set PKI_ENCRYPTION_SALT in .env."
+                "PKI_ENCRYPTION_SALT not set. Generate with: openssl rand -base64 32"
             )
-
-        try:
-            salt = base64.b64decode(salt_b64)
-            if len(salt) != 32:
-                raise ValueError(f"Salt must be 32 bytes (got {len(salt)})")
-        except Exception as exc:
-            raise RuntimeError(
-                f"Invalid PKI_ENCRYPTION_SALT. Must be valid base64-encoded 32-byte value. Error: {exc}"
-            ) from exc
-
-        # Derive a consistent 32-byte key from the password and salt
-        kdf = PBKDF2HMAC(
-            algorithm=hashes.SHA256(),
-            length=32,
-            salt=salt,
-            iterations=_ITERATIONS,
-        )
-        derived_key = base64.urlsafe_b64encode(kdf.derive(key.encode()))
-        _fernet = Fernet(derived_key)
-    return _fernet
+        salt = base64.b64decode(salt_b64)  # must be exactly 32 bytes
+        kdf = PBKDF2HMAC(algorithm=hashes.SHA256(), length=32, salt=salt, iterations=_ITERATIONS)
+        _key = kdf.derive(password.encode())
+    return _key
 
 
 def write_encrypted(path: Path, data: bytes) -> None:
-    """Encrypt and write bytes to file."""
-    encrypted = _get_fernet().encrypt(data)
-    path.write_bytes(encrypted)
+    """Encrypt data with AES-256-GCM and write to file.
+    File format: 12-byte nonce || AES-256-GCM ciphertext+tag
+    """
+    nonce = os.urandom(_NONCE_LENGTH)
+    ciphertext = AESGCM(_get_key()).encrypt(nonce, data, None)
+    path.write_bytes(nonce + ciphertext)
 
 
 def read_encrypted(path: Path) -> bytes:
-    """Read and decrypt bytes from file."""
-    return _get_fernet().decrypt(path.read_bytes())
+    """Read and decrypt file encrypted with AES-256-GCM.
+    Raises InvalidTag if authentication fails (tampered data or wrong key).
+    """
+    raw = path.read_bytes()
+    if len(raw) < _NONCE_LENGTH + 16:
+        raise ValueError(f"Encrypted file too short: {path}")
+    nonce = raw[:_NONCE_LENGTH]
+    ciphertext = raw[_NONCE_LENGTH:]
+    return AESGCM(_get_key()).decrypt(nonce, ciphertext, None)

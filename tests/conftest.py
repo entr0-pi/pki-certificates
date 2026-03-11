@@ -6,7 +6,8 @@ because db.engine is created at import time with the production DB_PATH.
 """
 
 import os
-os.environ.setdefault("ENCRYPTION_KEY", "pytest-test-key-for-testing-only")
+os.environ.setdefault("PKI_ENCRYPTION_KEY", "pytest-test-key-for-testing-only")
+os.environ.setdefault("PKI_ENCRYPTION_SALT", "dGVzdC1zYWx0LWV4YWN0bHktMzItYnl0ZXMtaGVyZSE=")
 os.environ.setdefault("PKI_API_KEY_ADMIN", "pytest-admin-key")
 os.environ.setdefault("PKI_API_KEY_MANAGER", "pytest-manager-key")
 os.environ.setdefault("PKI_API_KEY_USER", "pytest-user-key")

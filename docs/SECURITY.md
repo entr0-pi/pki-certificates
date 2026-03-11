@@ -78,7 +78,7 @@ This PKI Management System is a security-sensitive application for certificate l
     │ Certificate│    │ (/data/org_*)    │
     │ metadata   │    │                  │
     │ Extensions │    │ .pem.enc files   │
-    │ Audit logs │    │ (AES-128-CBC)    │
+    │ Audit logs │    │ (AES-256-GCM)    │
     └────────────┘    └──────────────────┘
 ```
 
@@ -318,34 +318,43 @@ except subprocess.TimeoutExpired:
 
 ### 11. Encryption at Rest (Issue #9)
 
-**Algorithm**: Fernet (AES-128-CBC + HMAC-SHA256)
+**Algorithm**: AES-256-GCM (authenticated encryption)
 - **Key Derivation**: PBKDF2 with SHA256
 - **Iterations**: 480,000
 - **Salt**: 32-byte random, unique per installation (`PKI_ENCRYPTION_SALT`)
+- **Nonce**: 12-byte random per file (GCM standard)
+- **Authentication Tag**: 16-byte (provides integrity + authenticity)
 
 **Files Encrypted**:
 - All PEM certificate files (*.pem.enc)
 - Private key files (*.key.enc)
 - Sensitive artifacts in `/data/org_*/` directories
 
+**File Format**: `[12-byte nonce][AES-256-GCM ciphertext + 16-byte tag]`
+
 **Implementation**:
 ```python
-def _get_fernet() -> Fernet:
-    salt = base64.b64decode(os.environ.get("PKI_ENCRYPTION_SALT"))
-    kdf = PBKDF2HMAC(
-        algorithm=hashes.SHA256(),
-        length=32,
-        salt=salt,
-        iterations=480_000
-    )
-    derived_key = base64.urlsafe_b64encode(kdf.derive(key.encode()))
-    return Fernet(derived_key)
+def _get_key() -> bytes:
+    password = os.environ.get("PKI_ENCRYPTION_KEY", "").strip()
+    salt_b64 = os.environ.get("PKI_ENCRYPTION_SALT", "").strip()
+    salt = base64.b64decode(salt_b64)
+    kdf = PBKDF2HMAC(algorithm=hashes.SHA256(), length=32, salt=salt, iterations=480_000)
+    return kdf.derive(password.encode())
+
+def write_encrypted(path: Path, data: bytes) -> None:
+    nonce = os.urandom(12)
+    ciphertext = AESGCM(_get_key()).encrypt(nonce, data, None)
+    path.write_bytes(nonce + ciphertext)
 ```
 
 **Security**:
+- AES-256 provides 256-bit security (vs. AES-128 in Fernet)
+- Authenticated encryption (GCM) prevents tampering and provides integrity
+- Random nonce per file prevents IV reuse attacks
 - Random salt eliminates pre-computed dictionary attacks
 - PBKDF2 iterations slow brute-force attempts (480,000 ≈ 0.5s/attempt)
 - Key derivation unique to each installation
+- Overhead: 28 bytes per file (12-byte nonce + 16-byte tag)
 
 ---
 
@@ -485,7 +494,7 @@ details: {
   export PKI_BASE_URL=https://pki.example.com
   export PKI_COOKIE_SECURE=true
   export PKI_COOKIE_SAMESITE=strict
-  export ENCRYPTION_KEY=<32+ random chars>
+  export PKI_ENCRYPTION_KEY=<32+ random chars>
   export PKI_ENCRYPTION_SALT=<base64-encoded 32 bytes>
   export PKI_API_KEY_ADMIN=<strong random key>
   export PKI_API_KEY_MANAGER=<strong random key>
@@ -513,7 +522,7 @@ details: {
 
 **Filesystem Security**:
 - `/data/org_*` folders: 0700 (owner only)
-- PEM files encrypted at rest (Fernet)
+- PEM files encrypted at rest (AES-256-GCM)
 - Backup encrypted copies separately from database
 
 **API Key Management**:
@@ -618,7 +627,7 @@ Include:
   - Security headers (Content-Security-Policy, etc.)
 
 - **RFC 7539**: ChaCha20 and Poly1305
-  - Reference for modern AEAD (not used; using Fernet/AES-128-CBC)
+  - Reference for modern AEAD (using AES-256-GCM for authenticated encryption)
 
 - **RFC 9155**: Algorithm Agility for DNSSEC
   - Deprecates SHA-1 for certificate issuance
@@ -628,7 +637,7 @@ Include:
 | Category | Mitigation |
 |----------|-----------|
 | A01: Broken Access Control | RBAC + org boundary validation |
-| A02: Cryptographic Failures | PBKDF2 + random salt, Fernet encryption |
+| A02: Cryptographic Failures | PBKDF2 + random salt, AES-256-GCM encryption |
 | A03: Injection | Parameterized queries (SQLAlchemy) |
 | A04: Insecure Design | Design review completed, threat model documented |
 | A05: Security Misconfiguration | Secure defaults (HTTPS, SameSite=strict) |
@@ -681,7 +690,7 @@ Each operation checks role before execution.
 ## Glossary
 
 - **PBKDF2**: Password-Based Key Derivation Function (slow, intended for key derivation)
-- **Fernet**: Symmetric encryption (AES-128-CBC + HMAC-SHA256)
+- **AES-256-GCM**: Authenticated encryption (AES-256 with Galois/Counter Mode for integrity + authenticity)
 - **JWT**: JSON Web Token (signed claims with user identity)
 - **RBAC**: Role-Based Access Control (permissions tied to roles)
 - **CSRF**: Cross-Site Request Forgery (attacker tricks user into unintended request)
