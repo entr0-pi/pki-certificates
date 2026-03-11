@@ -36,7 +36,8 @@ nano docker-compose.yml
 # copy/past the one in /docker + adapt at will
 nano .env
 # copy/past .env.example
-# edit with your real secrets
+# or run `python utils/generate_env.py` to create `.env` with generated secret values
+# and edit the rest
 docker compose pull
 docker compose up -d
 ```
@@ -170,7 +171,7 @@ backend/
     policy.json             Certificate policy and defaults
     rbac.json               Route-to-role authorization map
   openssl/
-    config.txt              OpenSSL config assets
+    config.txt              OpenSSL config assets (for reference only, not used)
 
 frontend/
   templates/                Jinja HTML templates
@@ -193,6 +194,9 @@ tests/
 
 scripts/
   init_db.py                Database initialization helper
+
+utils/
+  generate_env.py           Creates `.env` from `.env.example` and generates secret values
 
 package.json                npm scripts for frontend asset builds
 tailwind.config.js          Tailwind/DaisyUI configuration
