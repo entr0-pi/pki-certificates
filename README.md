@@ -38,7 +38,6 @@ nano .env
 # copy/past .env.example
 # or run `python utils/generate_env.py` to create `.env` with generated secret values
 # and edit the rest
-docker compose pull
 docker compose up -d
 ```
 
