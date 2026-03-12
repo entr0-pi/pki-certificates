@@ -1319,6 +1319,7 @@ async def list_organization_crls(org_id: int, dependencies=[require_roles_config
         result.append({
             "issuer_name": issuer["cert_name"],
             "cert_type": issuer["cert_type"],
+            "cert_id": issuer["id"],
             "issuer_status": issuer.get("status", "unknown"),
             "has_crl": has_crl,
             "download_url": f"/organizations/{org_id}/crl/{issuer['cert_name']}",
@@ -1359,6 +1360,36 @@ async def download_org_crl(org_id: int):
     )
 
 
+@app.get("/organizations/{org_id}/crl/bundle")
+async def download_org_crl_bundle(org_id: int):
+    """
+    Download all available CRLs for the organization as a single PEM bundle.
+    Order: intermediate CRL(s) first, then root CRL.
+    """
+    org = db.get_organization_by_id(org_id)
+    if not org:
+        return Response(content="Organization not found", status_code=404)
+
+    certs = db.list_certificates_by_organization(org_id)
+    # Prefer intermediate CRLs first, then root
+    issuers = [c for c in certs if c["cert_type"] == "intermediate" and c["status"] == "active"]
+    issuers += [c for c in certs if c["cert_type"] == "root" and c["status"] == "active"]
+
+    crl_pems: list[bytes] = []
+    for issuer in issuers:
+        crl_path = _resolve_crl_path_for_cert(org, issuer)
+        if crl_path and crl_path.exists():
+            crl_pems.append(file_crypto.read_encrypted(crl_path).strip())
+
+    if not crl_pems:
+        return Response(content="No CRLs available yet. Revoke a certificate first.", status_code=404)
+
+    bundle = b"\n\n".join(crl_pems) + b"\n"
+    return Response(
+        content=bundle,
+        media_type="application/x-pem-file",
+        headers={"Content-Disposition": 'attachment; filename="crl-bundle.pem"'},
+    )
 
 
 @app.get("/organizations/{org_id}/certificates/{cert_id}/download", dependencies=[require_roles_config()])
@@ -1434,7 +1465,23 @@ async def download_certificate(request: Request, org_id: int, cert_id: int, form
             headers={"Content-Disposition": f'attachment; filename="chain_{cert_id}.pem"'},
         )
 
-    return Response(content="Unsupported format. Use pem, p12, or chain.", status_code=400)
+    if fmt == "full_chain":
+        chain_content = _build_certificate_chain_pem(org, cert, org_id, include_root=True)
+        if chain_content is None:
+            return Response(content="Unable to build certificate chain", status_code=500)
+        # Audit: full chain download (including root)
+        user_name = _get_request_user(request)
+        try:
+            db.log_certificate_operation(cert_id, "downloaded_full_chain", user_name, None)
+        except Exception as e:
+            logger.warning(f"Audit log failed (non-fatal): {e}")
+        return Response(
+            content=chain_content,
+            media_type="application/x-pem-file",
+            headers={"Content-Disposition": f'attachment; filename="chain_{cert_id}.pem"'},
+        )
+
+    return Response(content="Unsupported format. Use pem, p12, chain, or full_chain.", status_code=400)
 
 
 @app.get("/organizations/{org_id}/certificates/{cert_id}/p12-password", dependencies=[require_roles_config()])
@@ -1524,7 +1571,7 @@ async def download_unencrypted_server_private_key(org_id: int, cert_id: int):
     )
 
 
-def _build_certificate_chain_pem(org: dict, cert: dict, org_id: int) -> bytes | None:
+def _build_certificate_chain_pem(org: dict, cert: dict, org_id: int, include_root: bool = False) -> bytes | None:
     chain_pems: list[bytes] = []
     current = cert
     visited_ids: set[int] = set()
@@ -1535,6 +1582,13 @@ def _build_certificate_chain_pem(org: dict, cert: dict, org_id: int) -> bytes | 
         if current_id in visited_ids:
             return None
         visited_ids.add(current_id)
+
+        issuer_cert_id = current.get("issuer_cert_id")
+
+        # Exclude root CA (self-signed, no issuer) from the chain,
+        # unless include_root is True or the requested cert itself is the root
+        if not issuer_cert_id and not include_root and current_id != cert.get("id"):
+            break
 
         cert_path_value = current.get("cert_path")
         if not cert_path_value:
@@ -1547,11 +1601,12 @@ def _build_certificate_chain_pem(org: dict, cert: dict, org_id: int) -> bytes | 
 
         chain_pems.append(file_crypto.read_encrypted(cert_path).strip())
 
-        issuer_cert_id = current.get("issuer_cert_id")
         if not issuer_cert_id:
             break
         current = db.get_certificate_by_id_for_organization(issuer_cert_id, org_id)
 
+    # Reverse to put issuers first, then leaf cert (e.g., [intermediate, end-entity])
+    chain_pems.reverse()
     return b"\n\n".join(chain_pems) + b"\n"
 
 

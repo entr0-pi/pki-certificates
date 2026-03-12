@@ -12,7 +12,7 @@
       "BASICCONSTRAINTS": "critical, CA:true, pathlen:1",
       "AUTHORITYKEYIDENTIFIER": "keyid:always",
       "EXTENDEDKEYUSAGE": "",
-      "CRL_URL": "{PKI_BASE_URL}/organizations/{org_id}/crl/{issuer_name}",
+      "CRL_URL": "{PKI_BASE_URL}/organizations/{org_id}/crl/bundle",
       "POLICY_C": "match",
       "POLICY_ST": "match",
       "POLICY_L": "match",
@@ -33,7 +33,7 @@
       "BASICCONSTRAINTS": "critical, CA:true, pathlen:0",
       "AUTHORITYKEYIDENTIFIER": "keyid:always,issuer",
       "EXTENDEDKEYUSAGE": "",
-      "CRL_URL": "{PKI_BASE_URL}/organizations/{org_id}/crl/{issuer_name}",
+      "CRL_URL": "{PKI_BASE_URL}/organizations/{org_id}/crl/bundle",
       "POLICY_C": "match",
       "POLICY_ST": "match",
       "POLICY_L": "match",
@@ -53,7 +53,7 @@
       "BASICCONSTRAINTS": "CA:FALSE",
       "AUTHORITYKEYIDENTIFIER": "keyid,issuer:always",
       "EXTENDEDKEYUSAGE": "serverAuth",
-      "CRL_URL": "{PKI_BASE_URL}/organizations/{org_id}/crl/{issuer_name}"
+      "CRL_URL": "{PKI_BASE_URL}/organizations/{org_id}/crl/bundle"
     },
     "end-entity-client": {
       "ec_curve": "secp256r1",
@@ -66,7 +66,7 @@
       "BASICCONSTRAINTS": "CA:FALSE",
       "AUTHORITYKEYIDENTIFIER": "keyid,issuer",
       "EXTENDEDKEYUSAGE": "clientAuth",
-      "CRL_URL": "{PKI_BASE_URL}/organizations/{org_id}/crl/{issuer_name}"
+      "CRL_URL": "{PKI_BASE_URL}/organizations/{org_id}/crl/bundle"
     },
     "end-entity-email": {
       "ec_curve": "secp256r1",
@@ -79,7 +79,7 @@
       "BASICCONSTRAINTS": "CA:FALSE",
       "AUTHORITYKEYIDENTIFIER": "keyid,issuer",
       "EXTENDEDKEYUSAGE": "clientAuth, emailProtection",
-      "CRL_URL": "{PKI_BASE_URL}/organizations/{org_id}/crl/{issuer_name}"
+      "CRL_URL": "{PKI_BASE_URL}/organizations/{org_id}/crl/bundle"
     },
     "end-entity-ocsp": {
       "ec_curve": "secp256r1",
@@ -92,7 +92,7 @@
       "BASICCONSTRAINTS": "CA:FALSE",
       "AUTHORITYKEYIDENTIFIER": "keyid,issuer",
       "EXTENDEDKEYUSAGE": "ocspSigning",
-      "CRL_URL": "{PKI_BASE_URL}/organizations/{org_id}/crl/{issuer_name}"
+      "CRL_URL": "{PKI_BASE_URL}/organizations/{org_id}/crl/bundle"
     }
   },
 

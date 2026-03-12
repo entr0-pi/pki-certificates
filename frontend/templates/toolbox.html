@@ -19,15 +19,19 @@
 
         <div class="card bg-base-100 shadow-xl">
             <div class="card-body">
-                <h2 class="card-title">Coming Soon</h2>
+                <h2 class="card-title">OpenSSL Revocation Check</h2>
                 <p class="text-base-content/70">
-                    This page is reserved for utility actions and diagnostics.
+                    Use the following OpenSSL command to verify that an end-user certificate is not revoked:
                 </p>
+                <pre class="bg-base-200 rounded p-4 overflow-x-auto text-sm"><code>openssl verify -crl_check -CAfile root.pem -CRLfile chain.crl chain.pem</code></pre>
+                <ul class="list-disc pl-6 text-base-content/70 space-y-2">
+                    <li><code>root.pem</code> is the root certificate.</li>
+                    <li><code>chain.crl</code> is the CRL bundle for the root and intermediate certificates.</li>
+                    <li><code>chain.pem</code> is the certificate chain containing the intermediate and end-user certificates.</li>
+                </ul>
             </div>
         </div>
     </div>
     <script src="/static/theme-toggle.js"></script>
 </body>
 </html>
-
-

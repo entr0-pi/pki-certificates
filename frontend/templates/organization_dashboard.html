@@ -350,6 +350,11 @@
                 // Render issuers with landing-page style cards
                 issuersList.innerHTML = availableCrls.map(crl => {
                     const lastUpdated = crl.last_updated ? new Date(crl.last_updated).toLocaleString() : "Never";
+                    const bundleBtn = `<a href="/organizations/{{ organization.id }}/crl/bundle" class="btn btn-ghost btn-xs" title="Download CRL Bundle (All CRLs)" download>
+                             <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.658 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
+                             </svg>
+                           </a>`;
                     return `
                         <div class="card bg-base-200 shadow transition-shadow hover:shadow-lg duration-200">
                             <div class="card-body p-3 gap-2">
@@ -364,11 +369,14 @@
                                     ${crl.revoked_count > 0 ? `<span class="text-error font-semibold">${crl.revoked_count}</span> <span class="text-base-content/60">revoked</span>` : '<span class="text-base-content/50">No revocations</span>'}
                                 </div>
                                 <div class="flex items-center justify-between gap-2">
-                                    <a href="${crl.download_url}" class="btn btn-ghost btn-xs" title="Download CRL" download>
-                                        <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
-                                        </svg>
-                                    </a>
+                                    <div class="flex gap-1">
+                                        ${bundleBtn}
+                                        <a href="${crl.download_url}" class="btn btn-ghost btn-xs" title="Download CRL" download>
+                                            <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
+                                            </svg>
+                                        </a>
+                                    </div>
                                     ${crl.issuer_status === 'revoked' ? '<div class="badge badge-error badge-sm">Revoked</div>' : ''}
                                 </div>
                             </div>
