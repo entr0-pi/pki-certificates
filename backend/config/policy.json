@@ -10,7 +10,7 @@
       "DEFAULT_RSA_KEY_BITS": "4096",
       "KEYUSAGE": "critical, keyCertSign, cRLSign",
       "BASICCONSTRAINTS": "critical, CA:true, pathlen:1",
-      "AUTHORITYKEYIDENTIFIER": "keyid:always",
+      "AUTHORITYKEYIDENTIFIER": "keyid",
       "EXTENDEDKEYUSAGE": "",
       "CRL_URL": "{PKI_BASE_URL}/organizations/{org_id}/crl/bundle",
       "POLICY_C": "match",
@@ -31,7 +31,7 @@
       "DEFAULT_RSA_KEY_BITS": "4096",
       "KEYUSAGE": "critical, keyCertSign, cRLSign, digitalSignature",
       "BASICCONSTRAINTS": "critical, CA:true, pathlen:0",
-      "AUTHORITYKEYIDENTIFIER": "keyid:always,issuer",
+      "AUTHORITYKEYIDENTIFIER": "keyid",
       "EXTENDEDKEYUSAGE": "",
       "CRL_URL": "{PKI_BASE_URL}/organizations/{org_id}/crl/bundle",
       "POLICY_C": "match",
@@ -51,7 +51,7 @@
       "DEFAULT_RSA_KEY_BITS": "2048",
       "KEYUSAGE": "critical, digitalSignature",
       "BASICCONSTRAINTS": "CA:FALSE",
-      "AUTHORITYKEYIDENTIFIER": "keyid,issuer:always",
+      "AUTHORITYKEYIDENTIFIER": "keyid",
       "EXTENDEDKEYUSAGE": "serverAuth",
       "CRL_URL": "{PKI_BASE_URL}/organizations/{org_id}/crl/bundle"
     },
@@ -64,7 +64,7 @@
       "DEFAULT_RSA_KEY_BITS": "2048",
       "KEYUSAGE": "critical, digitalSignature",
       "BASICCONSTRAINTS": "CA:FALSE",
-      "AUTHORITYKEYIDENTIFIER": "keyid,issuer",
+      "AUTHORITYKEYIDENTIFIER": "keyid",
       "EXTENDEDKEYUSAGE": "clientAuth",
       "CRL_URL": "{PKI_BASE_URL}/organizations/{org_id}/crl/bundle"
     },
@@ -77,7 +77,7 @@
       "DEFAULT_RSA_KEY_BITS": "2048",
       "KEYUSAGE": "critical, digitalSignature",
       "BASICCONSTRAINTS": "CA:FALSE",
-      "AUTHORITYKEYIDENTIFIER": "keyid,issuer",
+      "AUTHORITYKEYIDENTIFIER": "keyid",
       "EXTENDEDKEYUSAGE": "clientAuth, emailProtection",
       "CRL_URL": "{PKI_BASE_URL}/organizations/{org_id}/crl/bundle"
     },
@@ -90,7 +90,7 @@
       "DEFAULT_RSA_KEY_BITS": "2048",
       "KEYUSAGE": "critical, digitalSignature",
       "BASICCONSTRAINTS": "CA:FALSE",
-      "AUTHORITYKEYIDENTIFIER": "keyid,issuer",
+      "AUTHORITYKEYIDENTIFIER": "keyid",
       "EXTENDEDKEYUSAGE": "ocspSigning",
       "CRL_URL": "{PKI_BASE_URL}/organizations/{org_id}/crl/bundle"
     }

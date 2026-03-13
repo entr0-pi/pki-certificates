@@ -398,7 +398,26 @@ def parse_hash(name: str) -> hashes.HashAlgorithm:
 
 ---
 
-### 14. Dependency Management (Issue #14)
+### 14. Authority Key Identifier Restriction
+
+`AUTHORITYKEYIDENTIFIER` is intentionally restricted to `keyid`-only values in [`backend/config/policy.json`](../backend/config/policy.json).
+
+Allowed examples:
+- `keyid`
+- `keyid:always`
+
+Rejected examples:
+- `issuer`
+- `keyid,issuer`
+- `keyid:always,issuer`
+
+Reason:
+- Emitting issuer name/serial in AKI broke certificate chain validation in this application.
+- The certificate builder rejects issuer-based AKI configuration instead of generating it.
+
+---
+
+### 15. Dependency Management (Issue #14)
 
 **Pinned Versions**:
 ```
@@ -416,7 +435,7 @@ PyJWT==2.10.1
 
 ---
 
-### 15. Certificate Validation (Database Level)
+### 16. Certificate Validation (Database Level)
 
 **Constraints**:
 - `organizations.org_dir` — UNIQUE (prevent folder collisions)

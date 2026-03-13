@@ -123,7 +123,6 @@ def main() -> None:
         policy=root_defaults,
         subject_key=key.public_key(),
         issuer_key=key.public_key(),  # self-signed
-        issuer_cert=None,
         san=san,
         crl_url=crl_url,
     )

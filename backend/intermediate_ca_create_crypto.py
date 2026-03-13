@@ -134,7 +134,6 @@ def main() -> None:
         policy=intermediate_defaults,
         subject_key=key.public_key(),
         issuer_key=issuer_cert.public_key(),  # Root CA's public key
-        issuer_cert=issuer_cert,
         san=san,
         crl_url=crl_url,
     )

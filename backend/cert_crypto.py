@@ -251,13 +251,14 @@ def parse_extended_key_usage(eku_string: str) -> Optional[x509.ExtendedKeyUsage]
 def parse_authority_key_identifier(
     aki_string: str,
     issuer_key,
-    issuer_cert: Optional[x509.Certificate] = None,
 ) -> Tuple[Optional[x509.AuthorityKeyIdentifier], bool]:
     """
     Parse AUTHORITYKEYIDENTIFIER policy string.
-    Examples:
-      "keyid:always" -> AKI with key identifier only
-      "keyid:always,issuer" -> AKI with key identifier + issuer name/serial
+    Supported forms:
+      "keyid"
+      "keyid:always"
+    Issuer name/serial emission is intentionally not supported because it
+    breaks chain validation in this application.
     """
     parts = [p.strip().lower() for p in (aki_string or "").split(",") if p.strip()]
     if not parts:
@@ -265,27 +266,20 @@ def parse_authority_key_identifier(
 
     is_critical = "critical" in parts
     include_keyid = any(p.startswith("keyid") for p in parts)
-    include_issuer = any(p.startswith("issuer") for p in parts)
+    if any(p.startswith("issuer") for p in parts):
+        raise ValueError(
+            "AUTHORITYKEYIDENTIFIER issuer name/serial is not supported. Use 'keyid' only."
+        )
 
     key_identifier = None
-    authority_cert_issuer = None
-    authority_cert_serial_number = None
 
     if include_keyid:
         key_identifier = x509.SubjectKeyIdentifier.from_public_key(issuer_key).digest
 
-    if include_issuer:
-        if issuer_cert is None:
-            raise ValueError(
-                "AUTHORITYKEYIDENTIFIER includes issuer, but issuer_cert was not provided."
-            )
-        authority_cert_issuer = [x509.DirectoryName(issuer_cert.subject)]
-        authority_cert_serial_number = issuer_cert.serial_number
-
     aki = x509.AuthorityKeyIdentifier(
         key_identifier=key_identifier,
-        authority_cert_issuer=authority_cert_issuer,
-        authority_cert_serial_number=authority_cert_serial_number,
+        authority_cert_issuer=None,
+        authority_cert_serial_number=None,
     )
     return aki, is_critical
 
@@ -366,7 +360,6 @@ def build_extensions(
     policy: dict,
     subject_key,
     issuer_key,
-    issuer_cert: Optional[x509.Certificate],
     san: Optional[x509.SubjectAlternativeName],
     crl_url: str = "",
 ) -> List[Tuple[x509.Extension, bool]]:
@@ -391,7 +384,7 @@ def build_extensions(
     # AuthorityKeyIdentifier (policy-driven)
     aki_str = str(policy.get("AUTHORITYKEYIDENTIFIER", "")).strip()
     if aki_str:
-        aki, aki_critical = parse_authority_key_identifier(aki_str, issuer_key, issuer_cert)
+        aki, aki_critical = parse_authority_key_identifier(aki_str, issuer_key)
         if aki:
             extensions.append((aki, aki_critical))
 

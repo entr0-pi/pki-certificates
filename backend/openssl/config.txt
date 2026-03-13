@@ -59,6 +59,8 @@ emailAddress            = ${emailAddress}
 #### SECTION FOR EXTENSIONS ####
 [ cert_x509 ]
 # Extensions Certificates (`man x509v3_config`).
+# AUTHORITYKEYIDENTIFIER is restricted to keyid-only in this repo.
+# Do not use issuer/serial here because it breaks chain validation.
 subjectKeyIdentifier    = hash
 authorityKeyIdentifier  = ${AUTHORITYKEYIDENTIFIER}
 basicConstraints        = ${BASICCONSTRAINTS}
@@ -71,5 +73,6 @@ subjectAltName		    = ${subjectAltName}
 
 [ crl_x509 ]
 # Extension for CRLs (`man x509v3_config`).
+# Keep AKI keyid-only here as well.
 authorityKeyIdentifier=keyid:always
 #crlDistributionPoints  = URI:http://pki.example.com/crl/ca.crl

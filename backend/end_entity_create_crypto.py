@@ -223,7 +223,6 @@ def main() -> None:
         policy=entity_defaults,
         subject_key=key.public_key(),
         issuer_key=issuer_cert.public_key(),
-        issuer_cert=issuer_cert,
         san=san,
         crl_url=crl_url,
     )
