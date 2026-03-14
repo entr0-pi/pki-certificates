@@ -129,7 +129,6 @@
                     <input type="hidden" name="enddate">
                     <div class="flex gap-2">
                         <button class="btn btn-primary" type="submit">Create Root CA</button>
-                        <button class="btn btn-outline create-another-btn" type="submit">Create & Create Another</button>
                     </div>
                 </form>
                 {% endif %}
@@ -220,7 +219,6 @@
                     <input type="hidden" name="enddate">
                     <div class="flex gap-2">
                         <button class="btn btn-primary" type="submit">Create Intermediate CA</button>
-                        <button class="btn btn-outline create-another-btn" type="submit">Create & Create Another</button>
                     </div>
                 </form>
                 {% endif %}
@@ -347,7 +345,6 @@
                     </div>
                     <div class="flex gap-2">
                         <button class="btn btn-primary" type="submit">Create End-Entity</button>
-                        <button class="btn btn-outline create-another-btn" type="submit">Create & Create Another</button>
                     </div>
                 </form>
                 {% endif %}
@@ -599,7 +596,19 @@
             if (hidden) hidden.value = parts.join(", ");
         }
 
-        document.getElementById("issuerName")?.addEventListener("change", () => { applyEndEntityLocks(); });
+        document.getElementById("issuerName")?.addEventListener("change", function() {
+            applyEndEntityLocks();
+
+            // Pre-fill OU with Organization_issuerName format
+            const issuerName = this.value;
+            const issuerData = issuerSubjectMap[issuerName] || {};
+            const organization = issuerData["O"] || "";
+            const ouField = document.getElementById("ee_ou");
+
+            if (ouField && organization && issuerName) {
+                ouField.value = `${organization}_${issuerName}`;
+            }
+        });
 
         function validateAllSans() {
             const rows = Array.from(document.querySelectorAll("#sanRows > div"));
@@ -632,12 +641,6 @@
             });
         }
 
-        document.querySelectorAll(".create-another-btn").forEach((btn) => {
-            btn.addEventListener("click", () => {
-                btn.form.setAttribute("target", "_blank");
-                setTimeout(() => btn.form.removeAttribute("target"), 0);
-            });
-        });
 
         setMode("root");
         setEndEntityType("server");
