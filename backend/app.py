@@ -567,6 +567,21 @@ def _load_ui_policy() -> dict:
     return policy.get("ui", {})
 
 
+def _get_default_days_for_cert_type(cert_type: str) -> int:
+    """Get DEFAULT_DAYS from policy.json for a given certificate type."""
+    role_map = {
+        "root": "root",
+        "intermediate": "intermediate",
+        "server": "end-entity-server",
+        "client": "end-entity-client",
+        "email": "end-entity-email",
+        "ocsp": "end-entity-ocsp",
+    }
+    role = role_map.get(cert_type, "end-entity-server")
+    policy = _load_role_policy(role)
+    return int(policy.get("DEFAULT_DAYS", 365))
+
+
 _KNOWN_ROLES = frozenset({"admin", "manager", "user"})
 _KNOWN_METHODS = frozenset({"GET", "POST", "PUT", "PATCH", "DELETE", "HEAD", "OPTIONS"})
 
@@ -1135,6 +1150,9 @@ async def renew_certificate_page(request: Request, org_id: int, cert_id: int):
 
     suggested_name = cert["cert_name"]
 
+    # Get default renewal days from policy based on certificate type
+    default_days = _get_default_days_for_cert_type(cert_type)
+
     return templates.TemplateResponse(
         "renew_certificate.html",
         {
@@ -1146,6 +1164,7 @@ async def renew_certificate_page(request: Request, org_id: int, cert_id: int):
             "issuer_name": issuer_name,
             "issuer_type": issuer_type,
             "suggested_name": suggested_name,
+            "default_days": default_days,
         },
     )
 
