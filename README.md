@@ -22,12 +22,13 @@ This application provides a complete, self-hosted certificate authority (CA) man
 - **Client Certificate Authentication** — Deploy mTLS for secure service-to-service communication or employee device authentication.
 - **Email & Document Signing** — Issue S/MIME certificates for encrypted email and digitally-signed document workflows.
 - **IoT & Embedded Systems** — Manage device certificates for IoT deployments with automated renewal and revocation.
-- **Compliance & Regulated Environments** — Maintain full audit trails and control over certificate issuance for regulatory requirements (HIPAA, PCI-DSS, SOC 2).
 - **Development & Testing** — Create test certificates on-demand for development environments without managing external CA integrations.
 
 ## Quickstart with Docker Image
 
 You can run the application directly from the published container image without building it locally.
+
+For Docker deployment details, example Compose files, and container-specific setup, refer to [`/docker`](docker/README.md).
 
 ```bash
 mkdir my-pki
@@ -36,7 +37,7 @@ nano docker-compose.yml
 # copy/past the one in /docker + adapt at will
 nano .env
 # copy/past .env.example
-# or run `python utils/generate_env.py` to create `.env` with generated secret values
+# or run `python utils/generate_env.py` to create `.env` with generated secret values. Read utils\QUICKSTART.md first.
 # and edit the rest
 docker compose up -d
 ```
@@ -48,13 +49,25 @@ The default Compose image is `ghcr.io/entr0-pi/pki-certificates:latest`. See [do
 ### Prerequisites
 
 - Python 3.11+
+- `uv`
 - Node.js 18+ and `npm` for rebuilding frontend CSS
 
 ### 1. Install dependencies
 
 ```bash
-pip install -r requirements.txt
+uv venv
+# activate the virtual environment
+# PowerShell: .venv\Scripts\Activate.ps1
+# bash/zsh: source .venv/bin/activate
+
+uv pip install -r requirements.txt
 npm install
+```
+
+If you also plan to run tests locally:
+
+```bash
+uv pip install -r tests/requirements-dev.txt
 ```
 
 ### 2. Configure environment

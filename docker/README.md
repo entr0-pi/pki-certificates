@@ -2,6 +2,8 @@
 
 This directory contains Docker artifacts for deploying the PKI Management System in containerized environments.
 
+If you are starting from the repository root, the main [README.md](../README.md) points here for Docker-specific deployment guidance.
+
 ## Files
 
 - **Dockerfile** — Multi-stage build for production-ready container image
@@ -13,6 +15,22 @@ See [../.env.example](../.env.example) for complete environment variable documen
 ## Quick Start
 
 ### 1. Prepare Environment
+
+You can prepare `docker/.env` in either of these ways:
+
+- manually copy `../.env.example` and edit it
+- use the helper in `../utils` to generate secrets and write the file for you
+
+Recommended helper flow:
+
+```bash
+# From the project root:
+python utils/generate_env.py --env dev --output docker/.env
+
+# Review the generated file and adjust Docker-specific values if needed
+```
+
+See [../utils/QUICKSTART.md](../utils/QUICKSTART.md) for the generator behavior, profiles, and flags.
 
 ```bash
 cd docker/
@@ -40,6 +58,13 @@ nano .env  # or your preferred editor
 # - PKI_DATA_DIR=/app/data and PKI_DB_PATH=/app/database/pki.db (managed by volumes)
 # - PKI_COOKIE_SECURE=false (for local development; set to true in production)
 ```
+
+If you use `utils/generate_env.py`, the generated file still needs a final review before deployment, especially for:
+
+- `PKI_BASE_URL`
+- `PKI_COOKIE_SECURE`
+- notification settings
+- any production-specific host or proxy assumptions
 
 ### 2. Run Locally with Docker Compose
 
@@ -87,6 +112,7 @@ The PKI app uses **SQLite + local encrypted filesystem** and **must run as a sin
 ## Environment Variables
 
 See [../.env.example](../.env.example) for complete documentation of all configuration options.
+You can also generate `docker/.env` with [../utils/generate_env.py](../utils/generate_env.py); see [../utils/QUICKSTART.md](../utils/QUICKSTART.md).
 
 **Docker-specific settings** (hardcoded in docker-compose.yml, do not edit in .env):
 - `PKI_HOST=0.0.0.0` — Required for container networking
