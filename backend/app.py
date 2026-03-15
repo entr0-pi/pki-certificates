@@ -53,6 +53,7 @@ if __package__:
 else:
     import db
     import file_crypto
+    import cert_crypto
     from auth import (
         AuthConfigError,
         AuthSettings,
