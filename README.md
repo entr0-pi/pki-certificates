@@ -166,6 +166,8 @@ backend/
   root_ca_create_crypto.py
   intermediate_ca_create_crypto.py
   end_entity_create_crypto.py
+  logging_config.py         Centralized ISO 8601 logging configuration
+  uvicorn_log_config.py     Uvicorn-specific logging config (used in Docker and CLI)
   config/
     policy.json             Certificate policy, defaults, and root password length requirements
     rbac.json               Route-to-role authorization map
