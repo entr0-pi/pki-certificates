@@ -172,6 +172,7 @@ Certificate creation forms load cryptographic defaults from [`backend/config/pol
 
 - **Days to expiry**: Pre-filled per certificate type (root/intermediate/server/client/email/ocsp)
 - **EC Curve**: Default curve displayed in select option text
+- **Root password length**: Root CA form enforces the minimum length defined by `role_defaults.root.ROOT_PASSWORD_LENGTH`
 - **Dynamic updates**: Days and curve refresh when switching between end-entity types
 
 **Example**: Switching from "Server" to "Client" cert type:
