@@ -1131,9 +1131,9 @@ class ConsistencyChecker:
         for cert in certs:
             cert_uuid = cert.get("cert_uuid", "").strip()
 
-            # Check for missing UUID (warning only)
+            # Check for missing UUID (should have been auto-generated)
             if not cert_uuid:
-                self.issue("warning", f"[{cert['id']}] {cert['cert_name']}: missing cert_uuid")
+                self.issue("error", f"[{cert['id']}] {cert['cert_name']}: missing cert_uuid (should be auto-generated)")
                 self.stats["uuid_missing"] += 1
                 continue
 
@@ -1545,6 +1545,7 @@ class ConsistencyChecker:
             # NEW: Data integrity metrics
             self.stats["crl_validity_failures"] +
             self.stats["crl_signature_errors"] +
+            self.stats["uuid_missing"] +
             self.stats["uuid_invalid_format"] +
             self.stats["uuid_duplicates"] +
             self.stats["uuid_path_mismatches"] +
