@@ -98,6 +98,9 @@
                             {{ organization.name }}
                             {% if issuer_cert %} · Issued by <span class="font-medium">{{ issuer_cert.cert_name }}</span>{% endif %}
                             &nbsp;·&nbsp; ID #{{ certificate.id }}
+                            {% if certificate.status | lower == 'revoked' %}
+                            &nbsp;·&nbsp; Revocation date: {{ certificate.revoked_at[:10] if certificate.revoked_at else "—" }}
+                            {% endif %}
                         </p>
                     </div>
 
@@ -110,6 +113,7 @@
             </div>
         </div>
 
+        {% if certificate.status | lower != 'revoked' %}
         <div class="card bg-base-100 shadow">
             <div class="card-body p-5">
                 <p class="section-title">Validity Period</p>
@@ -128,6 +132,7 @@
                 <p id="validity-label" class="text-xs text-base-content/50 mt-1 text-right"></p>
             </div>
         </div>
+        {% endif %}
 
         <div class="card bg-base-100 shadow">
             <div class="card-body p-5">
