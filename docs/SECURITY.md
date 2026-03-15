@@ -114,7 +114,7 @@ This PKI Management System is a security-sensitive application for certificate l
 
 ---
 
-### 1. CSRF Protection (Issue #2 - Critical)
+### 1. CSRF Protection
 
 **Attack**: Cross-Origin Request Forgery via form submission from attacker website
 
@@ -133,7 +133,7 @@ This PKI Management System is a security-sensitive application for certificate l
 
 ---
 
-### 2. Secrets Management (Issue #1 - Critical)
+### 2. Secrets Management
 
 **Vulnerability**: Real secrets (.env, API keys, JWT secret) committed to source control
 
@@ -153,7 +153,7 @@ export PKI_ENCRYPTION_SALT=$SALT
 
 ---
 
-### 3. Authentication & Session Management (Issue #19)
+### 3. Authentication & Session Management
 
 **Implementation**:
 - JWT tokens signed with HS256 (HMAC-SHA256)
@@ -172,7 +172,7 @@ export PKI_ENCRYPTION_SALT=$SALT
 
 ---
 
-### 4. Error Disclosure Prevention (Issue #7)
+### 4. Error Disclosure Prevention
 
 **Vulnerability**: Stack traces, paths, database errors exposed to users
 
@@ -191,7 +191,7 @@ export PKI_ENCRYPTION_SALT=$SALT
 
 ---
 
-### 5. Security Response Headers (Issue #8)
+### 5. Security Response Headers
 
 **Headers Added**:
 
@@ -217,7 +217,7 @@ async def security_headers_middleware(request: Request, call_next):
 
 ---
 
-### 6. Subprocess Execution Safety (Issue #6)
+### 6. Subprocess Execution Safety
 
 **Vulnerability**: Hung child processes block worker threads indefinitely (DoS)
 
@@ -239,7 +239,7 @@ except subprocess.TimeoutExpired:
 
 ---
 
-### 7. Role-Based Access Control (RBAC) (Issue #13)
+### 7. Role-Based Access Control (RBAC)
 
 **Roles**:
 - **admin**: Full access (create orgs, all certs, revoke, manage users)
@@ -274,7 +274,7 @@ except subprocess.TimeoutExpired:
 
 ---
 
-### 8. Input Validation (Issue #5)
+### 8. Input Validation
 
 **Revocation Reason Validation**:
 - RFC 5280 §5.3.1 specifies 9 valid reason codes
@@ -296,7 +296,7 @@ except subprocess.TimeoutExpired:
 
 ---
 
-### 9. Cross-Organization Boundary Protection (Issue #3)
+### 9. Cross-Organization Boundary Protection
 
 **Vulnerability**: Authenticated user could revoke certs in other organizations
 
@@ -313,7 +313,7 @@ except subprocess.TimeoutExpired:
 
 ---
 
-### 10. CA Hierarchy Protection (Issue #12)
+### 10. CA Hierarchy Protection
 
 **Vulnerability**: Revoking a CA with active subordinates invalidates entire chain
 
@@ -403,7 +403,7 @@ Reason: Intermediate CAs are issued by Root CA (dual-factor), but once issued, t
 
 ---
 
-### 13. Encryption at Rest (Issue #9)
+### 13. Encryption at Rest
 
 **Algorithm**: AES-256-GCM (authenticated encryption)
 - **Key Derivation**: PBKDF2 with SHA256
@@ -445,7 +445,7 @@ def write_encrypted(path: Path, data: bytes) -> None:
 
 ---
 
-### 14. Audit Logging (Issue #10)
+### 14. Audit Logging
 
 **Information Logged**:
 - Operation type (create_root_ca, revoke_certificate, etc.)
@@ -467,7 +467,7 @@ def write_encrypted(path: Path, data: bytes) -> None:
 
 ---
 
-### 15. Hash Algorithm Selection (Issue #15)
+### 15. Hash Algorithm Selection
 
 **Removed**: SHA-1 (deprecated in RFC 9155)
 **Available**:
@@ -504,7 +504,7 @@ Reason:
 
 ---
 
-### 17. Dependency Management (Issue #14)
+### 17. Dependency Management
 
 **Pinned Versions**:
 ```
