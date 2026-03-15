@@ -481,17 +481,35 @@ def _get_request_user(request: Request) -> str:
     return request.state.auth.get("sub", "unknown") if hasattr(request.state, "auth") else "unknown"
 
 
-def _handle_renewal_revocation(org: dict, org_id: int, renewal_of_cert_id: str) -> None:
+def _handle_renewal_revocation(org: dict, org_id: int, renewal_of_cert_id: str) -> dict | None:
     """
     Auto-revoke the previous certificate when a renewal is created.
-    Silently ignores errors to prevent renewal from failing if revocation fails.
+    For intermediate CAs, blocks renewal if active subordinates exist.
+    Returns None on success, or dict with error details if blocking prevents renewal.
+    Silently ignores non-blocking errors to prevent renewal from failing if revocation fails.
     """
     if not (renewal_of_cert_id and renewal_of_cert_id.strip()):
-        return
+        return None
     try:
         old_cert_id = int(renewal_of_cert_id)
         old_cert = db.get_certificate_by_id_for_organization(old_cert_id, org_id)
         if old_cert:
+            # Only intermediate CAs need subordinate blocking check
+            # End-entity certs have no children; root CA renewal is rare and self-contained
+            if old_cert["cert_type"] == "intermediate":
+                org_certs = db.list_certificates_by_organization(org_id)
+                active_children = [
+                    c for c in org_certs
+                    if c["issuer_cert_id"] == old_cert_id and c["status"] == "active"
+                ]
+                if active_children:
+                    # Return error response — caller must handle
+                    return {
+                        "error": "Cannot renew this certificate",
+                        "message": "This certificate has active subordinate certificates. Revoke children first.",
+                        "child_certs": [{"id": c["id"], "cert_name": c["cert_name"]} for c in active_children]
+                    }
+
             db.revoke_certificate(old_cert_id, "superseded")
             # Audit: old cert superseded by renewal
             try:
@@ -506,6 +524,7 @@ def _handle_renewal_revocation(org: dict, org_id: int, renewal_of_cert_id: str) 
             logger.warning(f"Renewal attempt with non-existent cert_id {old_cert_id} for org_id {org_id}")
     except (ValueError, Exception):
         pass  # Silently ignore if revocation/CRL regeneration fails
+    return None
 
 
 def _build_issuer_subject_map(org_dir: str, issuers: list[dict[str, str]]) -> dict[str, dict[str, str]]:
@@ -1849,6 +1868,31 @@ async def create_root_ca(
     if eccurve.strip():
         params["eccurve"] = eccurve.strip()
 
+    # Note: Root CA renewal is rare since only one root CA per org is allowed.
+    # Check if renewal is blocked by active subordinate certificates
+    if renewal_of_cert_id and renewal_of_cert_id.strip():
+        try:
+            old_cert_id = int(renewal_of_cert_id)
+            old_cert = db.get_certificate_by_id_for_organization(old_cert_id, org_id)
+            if old_cert and old_cert["cert_type"] == "root":
+                org_certs = db.list_certificates_by_organization(org_id)
+                active_children = [
+                    c for c in org_certs
+                    if c["issuer_cert_id"] == old_cert_id and c["status"] == "active"
+                ]
+                if active_children:
+                    child_names = ", ".join([f"{c['cert_name']} ({c['cert_type']})" for c in active_children])
+                    return templates.TemplateResponse(
+                        "error.html",
+                        {
+                            "request": request,
+                            "error_message": f"Cannot renew this certificate because it has active subordinate certificates: {child_names}. Please revoke child certificates first.",
+                            "org_name": org["name"],
+                        },
+                    )
+        except (ValueError, Exception):
+            pass  # Ignore validation errors and proceed
+
     try:
         create_output = _run_create_cert_subprocess(params)
 
@@ -2055,6 +2099,30 @@ async def create_intermediate_ca(
 
     if eccurve.strip():
         params["eccurve"] = eccurve.strip()
+
+    # Check if renewal is blocked by active subordinate certificates
+    if renewal_of_cert_id and renewal_of_cert_id.strip():
+        try:
+            old_cert_id = int(renewal_of_cert_id)
+            old_cert = db.get_certificate_by_id_for_organization(old_cert_id, org_id)
+            if old_cert and old_cert["cert_type"] == "intermediate":
+                org_certs = db.list_certificates_by_organization(org_id)
+                active_children = [
+                    c for c in org_certs
+                    if c["issuer_cert_id"] == old_cert_id and c["status"] == "active"
+                ]
+                if active_children:
+                    child_names = ", ".join([f"{c['cert_name']} ({c['cert_type']})" for c in active_children])
+                    return templates.TemplateResponse(
+                        "error.html",
+                        {
+                            "request": request,
+                            "error_message": f"Cannot renew this certificate because it has active subordinate certificates: {child_names}. Please revoke child certificates first.",
+                            "org_name": org["name"],
+                        },
+                    )
+        except (ValueError, Exception):
+            pass  # Ignore validation errors and proceed
 
     try:
         create_output = _run_create_cert_subprocess(params)
@@ -2297,6 +2365,31 @@ async def create_end_entity(
 
     if eccurve.strip():
         params["eccurve"] = eccurve.strip()
+
+    # Note: End-entity certificates don't have subordinates, so subordinate blocking
+    # is not applicable here. However, we perform the check for consistency/future-proofing.
+    if renewal_of_cert_id and renewal_of_cert_id.strip():
+        try:
+            old_cert_id = int(renewal_of_cert_id)
+            old_cert = db.get_certificate_by_id_for_organization(old_cert_id, org_id)
+            if old_cert and old_cert["cert_type"] in ("root", "intermediate"):
+                org_certs = db.list_certificates_by_organization(org_id)
+                active_children = [
+                    c for c in org_certs
+                    if c["issuer_cert_id"] == old_cert_id and c["status"] == "active"
+                ]
+                if active_children:
+                    child_names = ", ".join([f"{c['cert_name']} ({c['cert_type']})" for c in active_children])
+                    return templates.TemplateResponse(
+                        "error.html",
+                        {
+                            "request": request,
+                            "error_message": f"Cannot renew this certificate because it has active subordinate certificates: {child_names}. Please revoke child certificates first.",
+                            "org_name": org["name"],
+                        },
+                    )
+        except (ValueError, Exception):
+            pass  # Ignore validation errors and proceed
 
     try:
         create_output = _run_create_cert_subprocess(params)
