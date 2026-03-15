@@ -85,6 +85,28 @@ class ConsistencyChecker:
             "eku_mismatches": 0,
             "orphaned_extensions": 0,
             "crl_mismatches": 0,
+            # NEW: CRL and data integrity checks
+            "crl_validity_checks": 0,
+            "crl_validity_failures": 0,
+            "crl_signature_errors": 0,
+            "uuid_missing": 0,
+            "uuid_invalid_format": 0,
+            "uuid_duplicates": 0,
+            "uuid_path_mismatches": 0,
+            "chain_validation_errors": 0,
+            "circular_chains_detected": 0,
+            "chain_depth_violations": 0,
+            "crl_revocation_mismatches": 0,
+            "crl_count_mismatches": 0,
+            "crl_reason_mismatches": 0,
+            "encryption_validation_failures": 0,
+            "decryption_errors": 0,
+            "password_file_errors": 0,
+            "field_completeness_errors": 0,
+            "policy_constraint_violations": 0,
+            "dual_password_missing": 0,
+            "dual_password_format_errors": 0,
+            "dual_password_decode_errors": 0,
             "warnings": 0,
         }
         self._pem_cache = {}
@@ -743,6 +765,44 @@ class ConsistencyChecker:
                 f"[{cert_id}] {cert_name}: EKU mismatch - PEM has {len(pem_ekus)}, DB has {len(db_ekus)}")
             self.stats["eku_mismatches"] += 1
 
+    def _load_crl(self, abs_path: Path):
+        """Load and cache CRL object (similar to _load_pem_cert)."""
+        cache_key = f"crl:{str(abs_path)}"
+        if cache_key in self._pem_cache:
+            return self._pem_cache[cache_key]
+        try:
+            crl_data = file_crypto.read_encrypted(abs_path)
+            crl = x509.load_pem_x509_crl(crl_data)
+            self._pem_cache[cache_key] = crl
+            return crl
+        except Exception:
+            return None
+
+    def _extract_extensions(self, pem_cert):
+        """Extract all extension types from certificate into structured dict."""
+        extensions = {
+            'san': None,
+            'bc': None,
+            'ku': None,
+            'eku': [],
+            'other': []
+        }
+        try:
+            for ext in pem_cert.extensions:
+                if isinstance(ext.value, x509.SubjectAlternativeName):
+                    extensions['san'] = ext.value
+                elif isinstance(ext.value, x509.BasicConstraints):
+                    extensions['bc'] = ext.value
+                elif isinstance(ext.value, x509.KeyUsage):
+                    extensions['ku'] = ext.value
+                elif isinstance(ext.value, x509.ExtendedKeyUsage):
+                    extensions['eku'] = list(ext.value)
+                else:
+                    extensions['other'].append(ext)
+        except Exception:
+            pass
+        return extensions
+
     def check_crl_consistency(self):
         """Verify CRL records match actual CRL files."""
         crls = db.get_all_crls()
@@ -1000,6 +1060,329 @@ class ConsistencyChecker:
                 if not isinstance(previous_entry, dict):
                     self.file_hashes[rel] = {"algo": "md5", "hash": current_hash}
 
+    def check_crl_validity(self):
+        """Verify all issuer CAs have valid CRL files with valid signatures."""
+        certs = db.list_all_certificates_for_backfill()
+        ca_certs = {c for c in certs if c["cert_type"] in ("root", "intermediate")}
+
+        for ca_cert in ca_certs:
+            # Verify CRL path exists
+            if not ca_cert.get("crl_path"):
+                self.issue("error", f"[{ca_cert['id']}] {ca_cert['cert_name']}: missing crl_path")
+                self.stats["crl_validity_failures"] += 1
+                continue
+
+            org_path = self._resolve_org_path(ca_cert["org_dir"])
+            crl_abs_path = org_path / ca_cert["crl_path"]
+
+            if not crl_abs_path.exists():
+                self.issue("error", f"[{ca_cert['id']}] CRL file missing: {crl_abs_path}")
+                self.stats["crl_validity_failures"] += 1
+                continue
+
+            # Load CRL
+            crl = self._load_crl(crl_abs_path)
+            if not crl:
+                self.issue("error", f"[{ca_cert['id']}] CRL unparseable: {crl_abs_path}")
+                self.stats["crl_validity_failures"] += 1
+                continue
+
+            # Verify CRL issuer DN matches CA cert subject
+            ca_abs_path = org_path / ca_cert["cert_path"]
+            ca_pem = self._load_pem_cert(ca_abs_path)
+            if not ca_pem or crl.issuer != ca_pem.subject:
+                self.issue("error", f"[{ca_cert['id']}] CRL issuer DN mismatch")
+                self.stats["crl_validity_failures"] += 1
+                continue
+
+            # Verify CRL signature using issuer's public key
+            try:
+                ca_pem.public_key().verify(
+                    crl.signature,
+                    crl.tbs_certificate_list.public_bytes(serialization.Encoding.DER),
+                    crl.signature_algorithm_oid
+                )
+            except Exception as e:
+                self.issue("error", f"[{ca_cert['id']}] CRL signature verification failed: {e}")
+                self.stats["crl_signature_errors"] += 1
+                continue
+
+            self.stats["crl_validity_checks"] += 1
+
+    def check_uuid_consistency(self):
+        """Verify UUID uniqueness, format, and references."""
+        import uuid as uuid_module
+        certs = db.list_all_certificates_for_backfill()
+        seen_uuids = {}
+
+        for cert in certs:
+            cert_uuid = cert.get("cert_uuid", "").strip()
+
+            # Check for missing UUID (warning only)
+            if not cert_uuid:
+                self.issue("warning", f"[{cert['id']}] {cert['cert_name']}: missing cert_uuid")
+                self.stats["uuid_missing"] += 1
+                continue
+
+            # Validate UUID format
+            try:
+                parsed = uuid_module.UUID(cert_uuid)
+                if parsed.version != 4:
+                    self.issue("error", f"[{cert['id']}] UUID not v4: {cert_uuid}")
+                    self.stats["uuid_invalid_format"] += 1
+                    continue
+            except Exception:
+                self.issue("error", f"[{cert['id']}] Invalid UUID format: {cert_uuid}")
+                self.stats["uuid_invalid_format"] += 1
+                continue
+
+            # Check for duplicates within organization
+            org_id = cert["organization_id"]
+            key = (org_id, cert_uuid)
+            if key in seen_uuids:
+                self.issue("error", f"Duplicate UUID {cert_uuid} in org {org_id}: "
+                                   f"certs {seen_uuids[key]} and {cert['id']}")
+                self.stats["uuid_duplicates"] += 1
+            else:
+                seen_uuids[key] = cert['id']
+
+            # Verify UUID appears in cert file paths
+            org_path = self._resolve_org_path(cert["org_dir"])
+            cert_path = org_path / cert["cert_path"]
+            if cert_uuid not in str(cert_path):
+                self.issue("error", f"[{cert['id']}] UUID {cert_uuid} not in cert_path: {cert_path}")
+                self.stats["uuid_path_mismatches"] += 1
+
+    def check_encryption_validation(self):
+        """Verify all encrypted files can be decrypted."""
+        certs = db.list_all_certificates_for_backfill()
+
+        for cert in certs:
+            cert_id = cert["id"]
+            cert_name = cert["cert_name"]
+            org_path = self._resolve_org_path(cert["org_dir"])
+
+            # Test cert decryption
+            if cert.get("cert_path"):
+                cert_path = org_path / cert["cert_path"]
+                try:
+                    file_crypto.read_encrypted(cert_path)
+                except Exception as e:
+                    self.issue("error", f"[{cert_id}] Cert decryption failed: {cert['cert_path']}: {e}")
+                    self.stats["decryption_errors"] += 1
+
+            # Test key decryption
+            if cert.get("key_path"):
+                key_path = org_path / cert["key_path"]
+                try:
+                    file_crypto.read_encrypted(key_path)
+                except Exception as e:
+                    self.issue("error", f"[{cert_id}] Key decryption failed: {cert['key_path']}: {e}")
+                    self.stats["decryption_errors"] += 1
+
+            # Test CRL decryption
+            if cert.get("crl_path"):
+                crl_path = org_path / cert["crl_path"]
+                try:
+                    file_crypto.read_encrypted(crl_path)
+                except Exception as e:
+                    self.issue("error", f"[{cert_id}] CRL decryption failed: {cert['crl_path']}: {e}")
+                    self.stats["decryption_errors"] += 1
+
+            # Test password file decryption (for CA types that have it)
+            if cert.get("pwd_path"):
+                pwd_path = org_path / cert["pwd_path"]
+                try:
+                    file_crypto.read_encrypted(pwd_path)
+                except Exception as e:
+                    self.issue("error", f"[{cert_id}] Password file decryption failed: {cert['pwd_path']}: {e}")
+                    self.stats["password_file_errors"] += 1
+
+    def check_crl_revocation_accuracy(self):
+        """Verify CRL contents match database revocation state."""
+        certs = db.list_all_certificates_for_backfill()
+        issuers = {c for c in certs if c["cert_type"] in ("root", "intermediate")}
+
+        for issuer in issuers:
+            issuer_id = issuer["id"]
+
+            # Get DB revoked certs for this issuer
+            db_revoked = db.get_revoked_certs_for_issuer(issuer_id)
+
+            # Get CRL file
+            if not issuer.get("crl_path"):
+                continue
+
+            org_path = self._resolve_org_path(issuer["org_dir"])
+            crl_path = org_path / issuer["crl_path"]
+            crl = self._load_crl(crl_path)
+            if not crl:
+                self.issue("error", f"[{issuer_id}] Cannot load CRL for revocation accuracy check")
+                self.stats["crl_revocation_mismatches"] += 1
+                continue
+
+            # Build set of serials in CRL and DB (normalize to hex lowercase)
+            db_serials = {str(r["serial_number"]).lower().lstrip("0") or "0" for r in db_revoked}
+            crl_serials = {format(entry.serial_number, "x").lower().lstrip("0") or "0" for entry in crl}
+
+            # Check count matches
+            if len(crl_serials) != len(db_serials):
+                self.issue("error", f"[{issuer_id}] CRL count mismatch: "
+                                   f"CRL has {len(crl_serials)}, DB has {len(db_serials)}")
+                self.stats["crl_count_mismatches"] += 1
+
+            # Check all DB revoked appear in CRL
+            for db_serial in db_serials:
+                if db_serial not in crl_serials:
+                    self.issue("error", f"[{issuer_id}] Serial {db_serial} in DB but not in CRL")
+                    self.stats["crl_revocation_mismatches"] += 1
+
+    def check_certificate_chain_validation(self):
+        """Validate certificate chain structure and depth limits."""
+        certs = db.list_all_certificates_for_backfill()
+        cert_by_id = {c["id"]: c for c in certs}
+
+        for cert in certs:
+            cert_id = cert["id"]
+            cert_type = cert["cert_type"]
+
+            if cert_type == "root":
+                # Root must not have issuer_cert_id
+                if cert.get("issuer_cert_id") is not None:
+                    self.issue("error", f"[{cert_id}] Root CA has issuer_cert_id set")
+                    self.stats["chain_validation_errors"] += 1
+                continue
+
+            issuer_cert_id = cert.get("issuer_cert_id")
+            if issuer_cert_id is None:
+                self.issue("error", f"[{cert_id}] Non-root cert {cert['cert_name']} has no issuer_cert_id")
+                self.stats["chain_validation_errors"] += 1
+                continue
+
+            # Verify issuer exists and is a CA
+            issuer = cert_by_id.get(issuer_cert_id)
+            if not issuer:
+                self.issue("error", f"[{cert_id}] Issuer cert {issuer_cert_id} not found")
+                self.stats["chain_validation_errors"] += 1
+                continue
+
+            if issuer["cert_type"] not in ("root", "intermediate"):
+                self.issue("error", f"[{cert_id}] Issuer {issuer_cert_id} is not a CA type (type={issuer['cert_type']})")
+                self.stats["chain_validation_errors"] += 1
+                continue
+
+            # Check for circular chains
+            visited = set()
+            current = cert_id
+            chain_depth = 0
+            while current is not None:
+                if current in visited:
+                    self.issue("error", f"[{cert_id}] Circular chain detected")
+                    self.stats["circular_chains_detected"] += 1
+                    break
+                visited.add(current)
+                current_cert = cert_by_id.get(current)
+                if not current_cert:
+                    break
+                current = current_cert.get("issuer_cert_id")
+                chain_depth += 1
+
+            # Check chain depth (root -> intermediate -> end-entity = max 3)
+            if chain_depth > 3:
+                self.issue("error", f"[{cert_id}] Chain depth exceeds limit: {chain_depth} > 3")
+                self.stats["chain_depth_violations"] += 1
+
+    def check_field_completeness(self):
+        """Verify required DN fields and policy compliance."""
+        certs = db.list_all_certificates_for_backfill()
+
+        for cert in certs:
+            cert_id = cert["id"]
+            cert_name = cert["cert_name"]
+            cert_path = cert["cert_path"]
+            org_dir = cert["org_dir"]
+
+            # Load certificate
+            abs_path = self._resolve_org_path(org_dir) / cert_path
+            try:
+                pem_data = file_crypto.read_encrypted(abs_path)
+                pem_cert = x509.load_pem_x509_certificate(pem_data)
+            except Exception as e:
+                self.issue("warning", f"[{cert_id}] Could not parse PEM for field completeness check: {e}")
+                continue
+
+            # Extract required DN fields
+            subject = pem_cert.subject
+            required_oids = [
+                (x509.oid.NameOID.COMMON_NAME, "CN"),
+                (x509.oid.NameOID.COUNTRY_NAME, "C"),
+                (x509.oid.NameOID.ORGANIZATION_NAME, "O"),
+                (x509.oid.NameOID.STATE_OR_PROVINCE_NAME, "ST"),
+                (x509.oid.NameOID.LOCALITY_NAME, "L"),
+            ]
+
+            for oid, field_name in required_oids:
+                attrs = subject.get_attributes_for_oid(oid)
+                if not attrs or not attrs[0].value:
+                    self.issue("warning", f"[{cert_id}] {cert_name}: Missing required DN field: {field_name}")
+                    self.stats["field_completeness_errors"] += 1
+
+            # Basic constraints check: CA certs must have BC with CA=true
+            cert_type = cert["cert_type"]
+            if cert_type in ("root", "intermediate"):
+                try:
+                    bc_ext = pem_cert.extensions.get_extension_for_class(x509.BasicConstraints)
+                    if not bc_ext.value.ca:
+                        self.issue("error", f"[{cert_id}] CA cert missing BasicConstraints.ca=true")
+                        self.stats["field_completeness_errors"] += 1
+                except x509.ExtensionNotFound:
+                    self.issue("error", f"[{cert_id}] CA cert missing BasicConstraints extension")
+                    self.stats["field_completeness_errors"] += 1
+
+    def check_dual_password_consistency(self):
+        """Verify root CA password files for dual password feature."""
+        certs = db.list_all_certificates_for_backfill()
+        root_cas = {c for c in certs if c["cert_type"] == "root"}
+
+        for root_ca in root_cas:
+            cert_id = root_ca["id"]
+            cert_name = root_ca["cert_name"]
+
+            # Check if pwd_path is set
+            if not root_ca.get("pwd_path"):
+                self.issue("warning", f"[{cert_id}] {cert_name}: Root CA has no pwd_path")
+                self.stats["dual_password_missing"] += 1
+                continue
+
+            org_path = self._resolve_org_path(root_ca["org_dir"])
+            pwd_path = org_path / root_ca["pwd_path"]
+
+            # Verify password file exists and is readable
+            if not pwd_path.exists():
+                self.issue("error", f"[{cert_id}] Password file missing: {pwd_path}")
+                self.stats["dual_password_missing"] += 1
+                continue
+
+            # Try to decrypt password file
+            try:
+                pwd_data = file_crypto.read_encrypted(pwd_path)
+            except Exception as e:
+                self.issue("error", f"[{cert_id}] Password file decryption failed: {e}")
+                self.stats["dual_password_decode_errors"] += 1
+                continue
+
+            # Verify decoded password is valid hex string (64 hex chars = 32 bytes)
+            try:
+                pwd_str = pwd_data.decode("utf-8").strip()
+                if len(pwd_str) != 64:
+                    self.issue("error", f"[{cert_id}] Password hex string invalid length: {len(pwd_str)} (expected 64)")
+                    self.stats["dual_password_format_errors"] += 1
+                    continue
+                int(pwd_str, 16)  # Verify it's valid hex
+            except Exception as e:
+                self.issue("error", f"[{cert_id}] Password format invalid: {e}")
+                self.stats["dual_password_format_errors"] += 1
+
     def run_checks(self):
         """Run all consistency checks."""
         logger.info("Starting consistency checks...")
@@ -1044,6 +1427,20 @@ class ConsistencyChecker:
         self.check_crl_consistency()
         self.check_crl_semantic_consistency(cert_by_id)
         self.check_file_hash_integrity()
+
+        # NEW: High priority checks for data integrity
+        self.check_crl_validity()
+        self.check_uuid_consistency()
+        self.check_encryption_validation()
+
+        # NEW: Medium priority checks
+        self.check_crl_revocation_accuracy()
+        self.check_certificate_chain_validation()
+
+        # NEW: Low priority checks
+        self.check_field_completeness()
+        self.check_dual_password_consistency()
+
         self._save_hash_manifest()
 
         logger.info(f"\n{'='*60}")
@@ -1076,6 +1473,27 @@ class ConsistencyChecker:
         logger.info(f"  KU mismatches:           {self.stats['ku_mismatches']}")
         logger.info(f"  EKU mismatches:          {self.stats['eku_mismatches']}")
         logger.info(f"  CRL mismatches:          {self.stats['crl_mismatches']}")
+        # NEW: Data integrity checks
+        logger.info(f"  CRL validity checks:     {self.stats['crl_validity_checks']}")
+        logger.info(f"  CRL validity failures:   {self.stats['crl_validity_failures']}")
+        logger.info(f"  CRL signature errors:    {self.stats['crl_signature_errors']}")
+        logger.info(f"  UUID missing:            {self.stats['uuid_missing']}")
+        logger.info(f"  UUID invalid format:     {self.stats['uuid_invalid_format']}")
+        logger.info(f"  UUID duplicates:         {self.stats['uuid_duplicates']}")
+        logger.info(f"  UUID path mismatches:    {self.stats['uuid_path_mismatches']}")
+        logger.info(f"  Chain validation errors: {self.stats['chain_validation_errors']}")
+        logger.info(f"  Circular chains:         {self.stats['circular_chains_detected']}")
+        logger.info(f"  Chain depth violations:  {self.stats['chain_depth_violations']}")
+        logger.info(f"  CRL revocation mismatches: {self.stats['crl_revocation_mismatches']}")
+        logger.info(f"  CRL count mismatches:    {self.stats['crl_count_mismatches']}")
+        logger.info(f"  CRL reason mismatches:   {self.stats['crl_reason_mismatches']}")
+        logger.info(f"  Decryption errors:       {self.stats['decryption_errors']}")
+        logger.info(f"  Password file errors:    {self.stats['password_file_errors']}")
+        logger.info(f"  Field completeness errors: {self.stats['field_completeness_errors']}")
+        logger.info(f"  Policy constraint violations: {self.stats['policy_constraint_violations']}")
+        logger.info(f"  Dual password missing:   {self.stats['dual_password_missing']}")
+        logger.info(f"  Dual password format errors: {self.stats['dual_password_format_errors']}")
+        logger.info(f"  Dual password decode errors: {self.stats['dual_password_decode_errors']}")
         logger.info(f"  Warnings:                {self.stats['warnings']}")
         logger.info(f"{'='*60}\n")
 
@@ -1102,7 +1520,26 @@ class ConsistencyChecker:
             self.stats["bc_mismatches"] +
             self.stats["ku_mismatches"] +
             self.stats["eku_mismatches"] +
-            self.stats["crl_mismatches"]
+            self.stats["crl_mismatches"] +
+            # NEW: Data integrity metrics
+            self.stats["crl_validity_failures"] +
+            self.stats["crl_signature_errors"] +
+            self.stats["uuid_invalid_format"] +
+            self.stats["uuid_duplicates"] +
+            self.stats["uuid_path_mismatches"] +
+            self.stats["chain_validation_errors"] +
+            self.stats["circular_chains_detected"] +
+            self.stats["chain_depth_violations"] +
+            self.stats["crl_revocation_mismatches"] +
+            self.stats["crl_count_mismatches"] +
+            self.stats["crl_reason_mismatches"] +
+            self.stats["decryption_errors"] +
+            self.stats["password_file_errors"] +
+            self.stats["field_completeness_errors"] +
+            self.stats["policy_constraint_violations"] +
+            self.stats["dual_password_missing"] +
+            self.stats["dual_password_format_errors"] +
+            self.stats["dual_password_decode_errors"]
         )
 
         if errors_found > 0:
