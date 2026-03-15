@@ -38,6 +38,7 @@ except ImportError as e:
 if __package__:
     from . import db
     from . import file_crypto
+    from . import cert_crypto
     from .auth import (
         AuthConfigError,
         AuthSettings,
