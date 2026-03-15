@@ -66,9 +66,9 @@ else:
     from folder import PkiLayout, init_root_workspace, init_intermediate_workspace, init_end_entity_workspace
     from path_config import get_project_root, get_data_dir, get_db_path, is_under_temp_dir
 
-# Configure logging with support for PKI_LOG_LEVEL environment variable
-log_level = os.environ.get("PKI_LOG_LEVEL", "INFO").upper()
-logging.basicConfig(level=getattr(logging, log_level, logging.INFO))
+# Configure logging with centralized ISO 8601 format
+from logging_config import configure_app_logging, get_uvicorn_log_config
+configure_app_logging()
 logger = logging.getLogger(__name__)
 
 # RFC 5280 valid revocation reason codes
@@ -2713,4 +2713,4 @@ if __name__ == "__main__":
     import uvicorn
     host = os.environ.get("PKI_HOST", "0.0.0.0")
     port = int(os.environ.get("PKI_PORT", "8000"))
-    uvicorn.run(app, host=host, port=port, reload=False)
+    uvicorn.run(app, host=host, port=port, reload=False, log_config=get_uvicorn_log_config())

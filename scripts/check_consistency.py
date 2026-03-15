@@ -40,11 +40,9 @@ from path_config import get_data_dir
 from cryptography import x509
 from cryptography.hazmat.primitives import serialization
 from cryptography.hazmat.primitives.asymmetric import rsa, ec
+from logging_config import configure_app_logging
 
-logging.basicConfig(
-    level=logging.INFO,
-    format='%(asctime)s - %(levelname)s - %(message)s'
-)
+configure_app_logging()
 logger = logging.getLogger(__name__)
 
 

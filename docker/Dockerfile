@@ -74,4 +74,4 @@ HEALTHCHECK --interval=30s --timeout=10s --start-period=10s --retries=3 \
 # Note: Persistent volumes required at:
 #   /app/data       - certificate artifacts (encrypted)
 #   /app/database   - SQLite database file
-CMD ["uvicorn", "backend.app:app", "--host", "0.0.0.0", "--port", "8000", "--workers", "1"]
+CMD ["uvicorn", "backend.app:app", "--host", "0.0.0.0", "--port", "8000", "--workers", "1", "--log-config", "backend/uvicorn_log_config.py"]
