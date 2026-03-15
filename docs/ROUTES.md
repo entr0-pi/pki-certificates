@@ -46,6 +46,7 @@ Route permissions are configuration-driven through `backend/config/rbac.json`.
 
 - Routes listed in `rbac.json` are restricted to the listed roles.
 - Routes not listed are allowed to any authenticated role (default-allow).
+- Public routes are those that do not use `require_roles_config()` and do not otherwise require a valid session.
 - Invalid RBAC config fails application startup.
 - Permission changes require editing `rbac.json` and restarting the server.
 
@@ -127,6 +128,7 @@ Legend: `✓` allowed, `-` denied, `public` no auth required.
 |------|:-----:|:-------:|:----:|------|
 | `GET /organizations/{org_id}/crl/{issuer_name}` | public | public | public | Issuer CRL (public endpoint) |
 | `GET /organizations/{org_id}/crl/download` | public | public | public | Latest CRL (public endpoint) |
+| `GET /organizations/{org_id}/crl/bundle` | public | public | public | Bundle of all available organization CRLs (public endpoint) |
 
 ### Health and Diagnostics
 
@@ -377,6 +379,11 @@ Legend: `✓` allowed, `-` denied, `public` no auth required.
 - Auth required: no (public CRL endpoint for certificate validators)
 - Request JSON: none
 - Response JSON: none (CRL file download)
+
+### `GET /organizations/{org_id}/crl/bundle`
+- Auth required: no (public CRL bundle endpoint for certificate validators)
+- Request JSON: none
+- Response JSON: none (PEM bundle containing all available organization CRLs)
 
 ### `GET /healthz`
 - Auth required: no
