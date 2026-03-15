@@ -226,12 +226,12 @@
 
         <div class="card bg-base-100 shadow-xl mt-6">
             <div class="card-body p-6">
-                <div class="flex items-center justify-between w-full">
+                <button class="flex items-center justify-between w-full text-left hover:opacity-75 transition-opacity" onclick="toggleAuditLogs()">
                     <h2 class="text-lg font-semibold">Recent Operations</h2>
                     <svg id="auditLogsArrow" xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 transition-transform duration-200" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7" />
                     </svg>
-                </div>
+                </button>
                 <div id="auditLogsContent" class="hidden mt-4">
                     {% if audit_logs %}
                     <div class="overflow-x-auto max-h-72 overflow-y-auto">
@@ -342,6 +342,12 @@
     </dialog>
 
     <script>
+        // Toggle Recent Operations visibility
+        function toggleAuditLogs() {
+            const content = document.getElementById("auditLogsContent");
+            content.classList.toggle("hidden");
+        }
+
         // CRL Distribution - fetch available CRLs
         async function loadCrlList() {
             const loading = document.getElementById("crlLoading");
