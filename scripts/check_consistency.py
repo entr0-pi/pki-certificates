@@ -1095,11 +1095,11 @@ class ConsistencyChecker:
                 self.stats["crl_validity_failures"] += 1
                 continue
 
-            # Load and validate CRL (use relative path like existing code)
-            crl_path = Path(crl_path_rel)
-            crl = self._load_crl(crl_path)
-            if not crl:
-                self.issue("error", f"[CRL {crl_id}] CRL unparseable: {crl_path_rel}")
+            # Load and validate CRL (exact same pattern as check_crl_semantic_consistency)
+            try:
+                crl = x509.load_pem_x509_crl(file_crypto.read_encrypted(Path(crl_path_rel)))
+            except Exception as e:
+                self.issue("error", f"[CRL {crl_id}] CRL unparseable: {crl_path_rel}: {e}")
                 self.stats["crl_validity_failures"] += 1
                 continue
 
@@ -1237,10 +1237,11 @@ class ConsistencyChecker:
             # Get DB revoked certs for this issuer
             db_revoked = db.get_revoked_certs_for_issuer(issuer_id)
 
-            # Load CRL using relative path (like existing code)
-            crl = self._load_crl(Path(crl_path_rel))
-            if not crl:
-                self.issue("error", f"[CRL {crl_id}] Cannot load CRL for revocation accuracy check")
+            # Load CRL (same pattern as check_crl_semantic_consistency)
+            try:
+                crl = x509.load_pem_x509_crl(file_crypto.read_encrypted(Path(crl_path_rel)))
+            except Exception as e:
+                self.issue("error", f"[CRL {crl_id}] Cannot load CRL for revocation accuracy check: {e}")
                 self.stats["crl_revocation_mismatches"] += 1
                 continue
 
