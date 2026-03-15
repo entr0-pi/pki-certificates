@@ -6,6 +6,8 @@
 
 # PKI Management System
 
+![PKI Management System screenshot](assets/app-1.png)
+
 Web-based PKI management for root, intermediate, and end-entity certificates (server, client, email, OCSP responder) with policy enforcement, RBAC, CRL generation, audit logging, and multi-organization isolation.
 
 ## Overview
