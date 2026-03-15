@@ -1933,7 +1933,7 @@ async def create_root_ca(
         # Ensure a baseline (possibly empty) CRL exists immediately for this CA.
         created_root = db.get_certificate_by_id_for_organization(cert_id, org_id)
         if created_root:
-            _trigger_crl_regeneration(org, cert_id, created_root)
+            _trigger_crl_regeneration(org, cert_id, created_root, root_user_password=root_ca_password)
 
         # Auto-revoke previous cert if this is a renewal
         _handle_renewal_revocation(org, org_id, renewal_of_cert_id)
