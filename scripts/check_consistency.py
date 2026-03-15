@@ -1063,7 +1063,7 @@ class ConsistencyChecker:
     def check_crl_validity(self):
         """Verify all issuer CAs have valid CRL files with valid signatures."""
         certs = db.list_all_certificates_for_backfill()
-        ca_certs = {c for c in certs if c["cert_type"] in ("root", "intermediate")}
+        ca_certs = [c for c in certs if c["cert_type"] in ("root", "intermediate")]
 
         for ca_cert in ca_certs:
             # Verify CRL path exists
@@ -1201,7 +1201,7 @@ class ConsistencyChecker:
     def check_crl_revocation_accuracy(self):
         """Verify CRL contents match database revocation state."""
         certs = db.list_all_certificates_for_backfill()
-        issuers = {c for c in certs if c["cert_type"] in ("root", "intermediate")}
+        issuers = [c for c in certs if c["cert_type"] in ("root", "intermediate")]
 
         for issuer in issuers:
             issuer_id = issuer["id"]
@@ -1342,7 +1342,7 @@ class ConsistencyChecker:
     def check_dual_password_consistency(self):
         """Verify root CA password files for dual password feature."""
         certs = db.list_all_certificates_for_backfill()
-        root_cas = {c for c in certs if c["cert_type"] == "root"}
+        root_cas = [c for c in certs if c["cert_type"] == "root"]
 
         for root_ca in root_cas:
             cert_id = root_ca["id"]
