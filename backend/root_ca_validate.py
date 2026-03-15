@@ -10,6 +10,7 @@ from cryptography.hazmat.primitives.asymmetric import ec, rsa, padding
 from cryptography.x509.oid import NameOID
 
 import file_crypto
+import cert_crypto
 
 
 def get_tests_banner(is_self_signed: bool, is_ca: bool, check_eku: bool = False) -> str:
@@ -45,8 +46,23 @@ def load_csr(p: Path) -> x509.CertificateSigningRequest:
     return x509.load_pem_x509_csr(file_crypto.read_encrypted(p))
 
 
-def load_private_key(key: Path, pwd: Path):
-    pw = file_crypto.read_encrypted(pwd).strip()
+def load_private_key(key: Path, pwd: Path, user_password: str | None = None):
+    """
+    Load private key from encrypted file.
+
+    For root CA: user_password must be provided to derive HMAC key via HMAC-SHA256(fs_password_bytes, user_password)
+    For other CAs: user_password is None, use filesystem password directly
+    """
+    fs_password_raw = file_crypto.read_encrypted(pwd).strip()
+
+    if user_password is not None:
+        # Root CA: decode hex filesystem password and derive HMAC key
+        fs_password_bytes = cert_crypto.decode_fs_password(fs_password_raw)
+        pw = cert_crypto.derive_root_key_password(fs_password_bytes, user_password)
+    else:
+        # Other CAs: use filesystem password directly
+        pw = fs_password_raw
+
     return serialization.load_pem_private_key(file_crypto.read_encrypted(key), password=pw)
 
 
@@ -217,7 +233,8 @@ def validate_and_print(
     title: str,
     issuer_cert: Optional[x509.Certificate] = None,
     is_ca: bool = True,
-    expected_eku: Optional[list[str]] = None
+    expected_eku: Optional[list[str]] = None,
+    user_password: str | None = None
 ) -> None:
     """
     Validate and print certificate information.
@@ -232,8 +249,9 @@ def validate_and_print(
         issuer_cert: Optional issuer certificate (if not self-signed)
         is_ca: Whether this is a CA certificate (affects extension validation)
         expected_eku: Optional list of expected ExtendedKeyUsage OIDs (e.g., ['serverAuth', 'clientAuth'])
+        user_password: For root CA, provide user password to derive HMAC key. For other CAs, leave None.
     """
-    cert_key = load_private_key(key_path, pwd_path)
+    cert_key = load_private_key(key_path, pwd_path, user_password=user_password)
     cert = load_cert(cert_path)
     csr = load_csr(csr_path)
 

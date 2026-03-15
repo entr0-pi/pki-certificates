@@ -1,6 +1,6 @@
 # PKI Management System - Security Documentation
 
-**Last Updated**: March 15, 2026
+**Last Updated**: March 15, 2026 (Comprehensive Two-Factor Implementation)
 **Status**: Deployment guidance for the current codebase
 
 ---
@@ -389,6 +389,17 @@ Intermediate CAs do NOT use user passwords. Their private keys are encrypted ONL
 Encrypt intermediate private key: AES-256-GCM(private_key, fs_password)
 ```
 Reason: Intermediate CAs are issued by Root CA (dual-factor), but once issued, they can be used without additional authorization. Only root CA operations require user authorization.
+
+**Implementation Details**:
+- Filesystem password storage: Stored as 64-character HEX string (32 random bytes) for ease of file handling
+- Password decoding: Before HMAC derivation, hex string is converted back to raw 32 bytes via `decode_fs_password()` helper
+- HMAC derivation: Both creation and usage paths use identical derivation: `HMAC-SHA256(key=fs_password_bytes, msg=user_password)`
+- Consistent across all operations:
+  - Root CA creation: Derives HMAC during encryption
+  - Intermediate CA creation: Decodes fs_password, derives HMAC for root CA unlock
+  - Root cert revocation: Decodes fs_password, derives HMAC for root CA unlock
+  - Validation: Decodes fs_password, derives HMAC for root CA key verification
+- All paths verified to handle bytes vs string conversions correctly
 
 ---
 

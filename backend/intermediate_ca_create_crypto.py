@@ -74,8 +74,11 @@ def main() -> None:
     if not issuer_pwd_path.exists():
         sys.exit(f"Issuer password file not found: {issuer_pwd_path}")
 
-    fs_passphrase = file_crypto.read_encrypted(issuer_pwd_path).strip()
-    issuer_passphrase = cert_crypto.derive_root_key_password(fs_passphrase, frontend["root_user_password"])
+    fs_password_raw = file_crypto.read_encrypted(issuer_pwd_path).strip()
+    # Decode filesystem password from hex string back to raw bytes
+    fs_password_bytes = cert_crypto.decode_fs_password(fs_password_raw)
+    # Derive effective password via HMAC-SHA256
+    issuer_passphrase = cert_crypto.derive_root_key_password(fs_password_bytes, frontend["root_user_password"])
     issuer_cert = cert_crypto.load_certificate(issuer_cert_path)
     issuer_key = cert_crypto.load_private_key(issuer_key_path, issuer_passphrase)
 

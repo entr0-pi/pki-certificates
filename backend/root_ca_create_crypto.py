@@ -162,7 +162,8 @@ def main() -> None:
     )
     file_crypto.write_encrypted(ws["crt_path"], cert.public_bytes(serialization.Encoding.PEM))
 
-    # Validate + print (expects ws dict keys exactly like this) [1](https://candeloitte-my.sharepoint.com/personal/ngemin_deloitte_ca/Documents/Microsoft%20Copilot%20Chat%20Files/root_ca_validate.py)
+    # Validate + print (expects ws dict keys exactly like this)
+    # Pass user_password for root CA to derive HMAC key for private key validation
     validate_and_print(
         ws,
         key_path=ws["key_path"],
@@ -170,6 +171,7 @@ def main() -> None:
         csr_path=ws["csr_path"],
         pwd_path=ws["pwd_path"],
         title=f"Key information for: {cert_name}",
+        user_password=root_user_password,
     )
 
     print("\n Root CA created successfully!")

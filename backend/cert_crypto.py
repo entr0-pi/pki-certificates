@@ -291,10 +291,34 @@ def parse_authority_key_identifier(
 # ---------------------------
 def derive_root_key_password(filesystem_password: bytes, user_password: str) -> bytes:
     """Derive the effective root CA unlock passphrase via HMAC-SHA256.
-    filesystem_password: raw bytes from .pwd.enc (HMAC key)
-    user_password: user-supplied string from HTTP request (HMAC message)
+
+    Args:
+        filesystem_password: raw bytes (32 bytes) - the HMAC key
+        user_password: user-supplied string from HTTP request (HMAC message)
+
+    Returns:
+        Derived password bytes (HMAC-SHA256 digest)
     """
     return hmac.new(filesystem_password, user_password.encode("utf-8"), hashlib.sha256).digest()
+
+
+def decode_fs_password(fs_password_raw: bytes | str) -> bytes:
+    """Convert stored filesystem password (hex string) back to raw bytes.
+
+    The filesystem password is stored as a hex-encoded string for convenience.
+    This function converts it back to the original 32 bytes.
+
+    Args:
+        fs_password_raw: bytes or str - the hex string from .pwd.enc file
+
+    Returns:
+        32 bytes - the original random filesystem password
+    """
+    if isinstance(fs_password_raw, bytes):
+        fs_password_hex = fs_password_raw.decode('utf-8')
+    else:
+        fs_password_hex = fs_password_raw
+    return bytes.fromhex(fs_password_hex)
 
 
 def generate_ec_key(curve_name: str) -> ec.EllipticCurvePrivateKey:

@@ -176,8 +176,11 @@ def main() -> None:
         if not root_user_password:
             sys.exit("root_user_password is required when issuer_type is root")
         issuer_paths = resolve_issuer_paths(org_dir, issuer_name, issuer_artifact_name, issuer_type, layout)
-        fs_password = file_crypto.read_encrypted(issuer_paths["pwd_path"]).strip()
-        override_passphrase = cert_crypto.derive_root_key_password(fs_password, root_user_password)
+        fs_password_raw = file_crypto.read_encrypted(issuer_paths["pwd_path"]).strip()
+        # Decode filesystem password from hex string back to raw bytes
+        fs_password_bytes = cert_crypto.decode_fs_password(fs_password_raw)
+        # Derive effective password via HMAC-SHA256
+        override_passphrase = cert_crypto.derive_root_key_password(fs_password_bytes, root_user_password)
 
     try:
         issuer_paths = resolve_issuer_paths(org_dir, issuer_name, issuer_artifact_name, issuer_type, layout)
