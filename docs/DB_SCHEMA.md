@@ -1,15 +1,10 @@
-# PKI Database Schema (Implementation Status)
+# PKI Database Schema
 
-This document is the **trustworthy status view** of the PKI database model as of the current codebase.
+This document describes the PKI database model as of the current codebase.
 
 Source of truth:
 - Schema DDL: `database/pki_schema.sql`
 - Runtime usage: `backend/db.py`, `backend/app.py`
-
-Status labels:
-- `Implemented`: actively read/written by current app flows
-- `Partially Implemented`: table/object exists and is touched in limited ways
-- `Planned`: table/object exists in schema but is not actively used by current app flows
 
 ---
 
@@ -17,38 +12,38 @@ Status labels:
 
 ### Tables
 
-| Table | Status | Notes |
-|---|---|---|
-| `organizations` | Implemented | Created/read/listed by app. |
-| `certificates` | Implemented | Primary certificate metadata store; issuance + revocation state updates. |
-| `certificate_audit_log` | Implemented | Issuance, revocation, renewal, download, and password-view flows write audit records. |
-| `subject_alternative_names` | Implemented | Populated on cert creation; read by popup with PEM fallback for legacy certs. |
-| `certificate_extensions` | Implemented | Generic extension storage; populated on cert creation for audit trail. |
-| `basic_constraints` | Implemented | Normalized extension storage; populated on cert creation, read by popup. |
-| `key_usage` | Implemented | Normalized extension storage; populated on cert creation, read by popup. |
-| `extended_key_usage` | Implemented | Normalized extension storage; populated on cert creation, read by popup. |
-| `crls` | Implemented | Populated during revocation after CRL generation succeeds. |
-| `revoked_certificates` | Implemented | Populated during revocation; links CRL history to revoked certs. |
+| Table | Notes |
+|---|---|
+| `organizations` | Created/read/listed by app. |
+| `certificates` | Primary certificate metadata store; issuance + revocation state updates. |
+| `certificate_audit_log` | Issuance, revocation, renewal, download, and password-view flows write audit records. |
+| `subject_alternative_names` | Populated on cert creation; read by popup with PEM fallback for legacy certs. |
+| `certificate_extensions` | Generic extension storage; populated on cert creation for audit trail. |
+| `basic_constraints` | Normalized extension storage; populated on cert creation, read by popup. |
+| `key_usage` | Normalized extension storage; populated on cert creation, read by popup. |
+| `extended_key_usage` | Normalized extension storage; populated on cert creation, read by popup. |
+| `crls` | Populated during revocation after CRL generation succeeds. |
+| `revoked_certificates` | Populated during revocation; links CRL history to revoked certs. |
 
 ### Views
 
-| View | Status | Notes |
-|---|---|---|
-| `certificate_summary` | Implemented | Used by dashboard statistics queries in `backend/db.py`. |
+| View | Notes |
+|---|---|
+| `certificate_summary` | Used by dashboard statistics queries in `backend/db.py`. |
 
 ### Indexes
 
-| Index Group | Status | Notes |
-|---|---|---|
-| `certificates` indexes | Implemented | Useful for current read paths by org/type/status/issuer. |
-| Extension table indexes | Planned | Tables not actively populated. |
-| Audit table indexes | Partially Implemented | Table lightly used at helper level only. |
+| Index Group | Notes |
+|---|---|
+| `certificates` indexes | Useful for current read paths by org/type/status/issuer. |
+| Extension table indexes | Present for extension-related tables. |
+| Audit table indexes | Present for audit-log access patterns. |
 
 ---
 
-## Implemented Data Model (What app actually relies on)
+## Data Model (What app actually relies on)
 
-### 1. `organizations` (`Implemented`)
+### 1. `organizations`
 
 Stores organization identity and folder mapping.
 
@@ -57,7 +52,7 @@ Stores organization identity and folder mapping.
   - list organizations
   - fetch by id / by directory
 
-### 2. `certificates` (`Implemented`)
+### 2. `certificates`
 
 Stores all issued cert metadata for:
 - `root`
@@ -72,16 +67,16 @@ Actively used for:
 - revocation status (`status`, `revoked_at`, `revocation_reason`)
 - expiring certificate queries
 
-### 3. `certificate_audit_log` (`Implemented`)
+### 3. `certificate_audit_log`
 
 - `db.log_certificate_operation(...)` is actively called by certificate lifecycle and download flows.
 - Current app flows record create, renew, revoke, artifact download, and PKCS#12 password view events.
 
 ---
 
-### Recently Implemented (as of Feb 2026)
+### Extension and CRL Tables
 
-The following extension and CRL tables are now **Implemented**:
+The following extension and CRL tables are used by the current application:
 - `subject_alternative_names` — populated on cert creation; read by popup with PEM fallback
 - `certificate_extensions` — generic extension audit trail
 - `basic_constraints` — normalized extension storage
@@ -142,6 +137,6 @@ SELECT (SELECT COUNT(*) FROM organizations) AS organizations,
 
 ## Notes for Contributors
 
-- If you add writes to any currently planned table, update this document status in the same PR.
-- If you switch app logic to read from views, mark those views `Implemented`.
+- If you add writes to new tables, update this document in the same PR.
+- If you switch app logic to read from views, update the relevant section here.
 - Keep this doc aligned with both `database/pki_schema.sql` and runtime behavior in `backend/db.py` / `backend/app.py`.

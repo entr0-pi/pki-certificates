@@ -46,7 +46,10 @@ Use this in order, and record each step as PASS/FAIL with screenshot + note.
 - [ ] From org dashboard, open `Create Certificate`.
 - [ ] In `Root CA` tab, confirm all compulsory fields show `*`.
 - [ ] Confirm `Certificate Valid For` and `EC Curve` also show `*`.
+- [ ] In `Root CA` tab, confirm a root password field is present for the dual root password flow.
+- [ ] In `Root CA` tab, confirm the root password is required before submission.
 - [ ] Submit with one required field empty and confirm browser blocks submission.
+- [ ] Submit Root CA creation with empty root password and confirm validation blocks submission or API returns HTTP 422.
 - [ ] Policy Enforcement - Root CA: verify locked fields (if policy enforces them) are disabled/read-only.
 - [ ] Policy Enforcement - Root CA: try entering invalid country code (non-2-char) and confirm validation error.
 - [ ] Policy Enforcement - Root CA: try entering invalid email format and confirm validation error.
@@ -55,12 +58,16 @@ Use this in order, and record each step as PASS/FAIL with screenshot + note.
 - [ ] Fill valid root data and create root cert.
 - [ ] Confirm success response and return to org dashboard.
 - [ ] Verify root cert appears in table with status `active`.
+- [ ] Verify root creation does not display, persist, or echo the user-provided root password anywhere in the UI.
 - [ ] Open root cert popup and verify subject fields, extensions, and validity.
 - [ ] Back to `Create Certificate`, open `Intermediate CA` tab.
 - [ ] Confirm required markers and locked-field behavior (policy lock applies for subject fields).
+- [ ] Confirm the `Intermediate CA` flow prompts for the root password needed to unlock the Root CA private key.
 - [ ] Policy Enforcement - Intermediate CA: verify subject fields are locked/prefilled if policy requires them to match root, with all fields.
 - [ ] Policy Enforcement - Intermediate CA: try creating without an active issuer and confirm error.
 - [ ] Policy Enforcement - Intermediate CA: verify EC curve options match policy restrictions.
+- [ ] Submit Intermediate CA creation without the root password and confirm the request is rejected.
+- [ ] Submit Intermediate CA creation with an incorrect root password and confirm decryption fails with the expected generic error behavior.
 - [ ] Create an intermediate CA with valid values.
 - [ ] Confirm success and presence in dashboard table.
 - [ ] Open `End-Entity` tab.
@@ -151,6 +158,10 @@ Use this in order, and record each step as PASS/FAIL with screenshot + note.
 - [ ] On org dashboard, note the current CRL Distribution cards showing "No revocations" for each issuer.
 - [ ] Choose an active cert and click `Revoke`.
 - [ ] In modal, test reason selection list (all options available).
+- [ ] If the selected certificate was issued by the Root CA, confirm the revoke flow prompts for the root password.
+- [ ] If the selected certificate was issued by an Intermediate CA, confirm the revoke flow does not require the root password.
+- [ ] Try revoking a root-issued certificate without a root password and confirm the request is rejected.
+- [ ] Try revoking a root-issued certificate with an incorrect root password and confirm the request fails with the expected generic error behavior.
 - [ ] Submit revocation with `keyCompromise`.
 - [ ] Confirm cert status becomes `revoked` in dashboard.
 - [ ] CRL Distribution Update: refresh the page and verify the issuer's CRL card now shows red "1 revoked" badge.
@@ -217,6 +228,10 @@ Log out between roles and re-login each time.
 - [ ] Renewal/Date Validation: try renewal with invalid date input (past date) and verify client-side block.
 - [ ] Renewal/Date Validation: try renewal with date before current validity start and verify error.
 - [ ] Renewal/Date Validation: try renewal with non-numeric days input and verify validation.
+- [ ] Root Password Validation: try creating a Root CA with a blank password and confirm request rejection.
+- [ ] Root Password Validation: try creating an Intermediate CA with a wrong root password and confirm no partial certificate is created.
+- [ ] Root Password Validation: try revoking a root-issued certificate with a wrong root password and confirm CRL state does not change.
+- [ ] Root Password Validation: verify failed root password attempts do not reveal whether the password was almost correct or expose secret material in UI text.
 - [ ] Certificate Chain Validation: try creating end-entity with revoked intermediate as issuer and verify error.
 - [ ] Certificate Chain Validation: try creating intermediate with revoked root as issuer and verify error.
 - [ ] SAN Validation - Empty SAN: create server cert with empty SAN section (no entries added) and confirm success.
@@ -255,6 +270,7 @@ These areas have automated tests in the repository, but you should still review 
 - [ ] Extension Persistence: extensions stored in normalized tables (SAN, basic_constraints, key_usage, EKU).
 - [ ] Revocation Idempotency: double-revoke returns correct status.
 - [ ] PKCS#12 Bundle Generation: encrypted `.p12` bundle and password file exist for eligible certificates.
+- [ ] Dual Root Password Enforcement: root creation requires a user password; intermediate creation and root-issued revocation require the correct root password.
 
 Run `pytest tests/ -v` and confirm the relevant tests are not skipped in your deployment environment before treating any of the items above as covered.
 
@@ -271,4 +287,5 @@ Run `pytest tests/ -v` and confirm the relevant tests are not skipped in your de
 - [ ] CRL content verification completed (Phase 5).
 - [ ] All negative/validation cases tested (Phase 8).
 - [ ] PKCS#12 password prompt flow verified for eligible roles and certificate types.
+- [ ] Dual root password flow verified for root creation, intermediate issuance, and root-issued revocation.
 - [ ] Any failures logged with exact phase item, URL, role, and screenshot.
