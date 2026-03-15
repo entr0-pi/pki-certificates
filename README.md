@@ -1,10 +1,10 @@
-# PKI Management System
-
 > [!WARNING]
 > This project is in active development and should not be used in production at this stage.
 > All `v1.*.*` releases should be considered beta.
 > Production-ready status is targeted from `v2` onward.
 > Database migration planning is not covered during the current phase, so schema changes may require manual database reinitialization or data reset.
+
+# PKI Management System
 
 Web-based PKI management for root, intermediate, and end-entity certificates (server, client, email, OCSP responder) with policy enforcement, RBAC, CRL generation, audit logging, and multi-organization isolation.
 
