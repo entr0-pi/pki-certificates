@@ -206,6 +206,7 @@ def created_root_ca(test_client, created_org) -> dict:
     from helpers import compute_enddate
 
     cert_name = "test_root_ca"
+    test_root_password = "test-root-password-12345"
 
     response = test_client.post(
         f"/organizations/{created_org['org_id']}/root-ca",
@@ -220,6 +221,7 @@ def created_root_ca(test_client, created_org) -> dict:
             "email": "admin@test.com",
             "eccurve": "secp384r1",
             "enddate": compute_enddate(3650),
+            "root_ca_password": test_root_password,
         },
     )
     assert response.status_code == 200, f"Failed to create root CA: {response.text}"
@@ -243,6 +245,7 @@ def created_root_ca(test_client, created_org) -> dict:
         "cert_name": root_ca["cert_name"],
         "cert_uuid": root_ca["cert_uuid"],
         "org_id": created_org["org_id"],
+        "password": test_root_password,
     }
 
 
@@ -271,6 +274,7 @@ def created_intermediate_ca(test_client, created_org, created_root_ca) -> dict:
             "email": "admin@test.com",
             "eccurve": "secp384r1",
             "enddate": compute_enddate(3650),  # Align with policy.json: 10 years for intermediate CA
+            "root_user_password": created_root_ca["password"],
         },
     )
     assert response.status_code == 200, f"Failed to create intermediate CA: {response.text}"

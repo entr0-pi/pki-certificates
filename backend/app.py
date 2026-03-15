@@ -1802,6 +1802,7 @@ async def create_root_ca(
     enddate: str = Form(""),
     eccurve: str = Form(""),
     renewal_of_cert_id: str = Form(""),
+    root_ca_password: str = Form(""),
 ):
     """Create Root CA for an organization and register it in the database.
 
@@ -1830,10 +1831,11 @@ async def create_root_ca(
             },
         )
 
-    # Generate secure password from policy configuration
-    root_policy = _load_role_policy("root")
-    password_length = int(root_policy.get("ROOT_PASSWORD_LENGTH", "32"))
-    root_ca_password = cert_crypto.generate_secure_password(password_length)
+    # Use provided password if given (for testing), otherwise generate secure password
+    if not root_ca_password.strip():
+        root_policy = _load_role_policy("root")
+        password_length = int(root_policy.get("ROOT_PASSWORD_LENGTH", "32"))
+        root_ca_password = cert_crypto.generate_secure_password(password_length)
 
     # Validate email format if provided
     if email and not re.match(r"^[^@\s]+@[^@\s]+\.[^@\s]+$", email):

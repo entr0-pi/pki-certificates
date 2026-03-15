@@ -179,6 +179,7 @@ def test_backend_ignores_tampered_country(
             "email": "admin@test.com",
             "eccurve": "secp384r1",
             "enddate": compute_enddate(1825),
+            "root_user_password": created_root_ca["password"],
         },
     )
     assert response.status_code == 200, f"Intermediate creation failed: {response.text}"
