@@ -274,10 +274,14 @@ Legend: `✓` allowed, `-` denied, `public` no auth required.
   "subjectAltName": "",
   "enddate": "2035-12-31",
   "eccurve": "secp384r1",
-  "renewal_of_cert_id": ""
+  "renewal_of_cert_id": "",
+  "root_user_password": "password-to-unlock-root-ca-private-key"
 }
 ```
+- **Security note**: `root_user_password` is required and must match the password used when the Root CA was created. The password is never stored or logged; it is used only to derive the effective unlock passphrase for the Root CA private key via HMAC-SHA256. See [SECURITY.md - Root CA Private Key Access Control](#root-ca-private-key-access-control) for details.
 - Response JSON: none (HTML page with result)
+- HTTP 422: if `root_user_password` is empty or missing
+- HTTP 500: if `root_user_password` is incorrect (invalid key decryption)
 
 ### `POST /organizations/{org_id}/end-entity`
 - Auth required: yes
@@ -310,10 +314,15 @@ Legend: `✓` allowed, `-` denied, `public` no auth required.
 - Request (JSON-equivalent):
 ```json
 {
-  "reason": "keyCompromise"
+  "reason": "keyCompromise",
+  "root_user_password": "password-to-unlock-root-ca-private-key"
 }
 ```
+- **Security note**: If the certificate was issued by the Root CA, `root_user_password` is required and must be correct. The password is used to regenerate the CRL after revocation. For certificates issued by an Intermediate CA, the `root_user_password` field is not required.
+- Valid revocation reasons: `unspecified`, `keyCompromise`, `caCompromise`, `affiliationChanged`, `superseded`, `cessationOfOperation`, `certificateHold`, `removeFromCRL`, `privilegeWithdrawn`, `aACompromise`
 - Response JSON: none (HTML dashboard/error page)
+- HTTP 422: if `root_user_password` is empty and certificate is issued by Root CA
+- HTTP 500: if `root_user_password` is incorrect (invalid CRL generation)
 
 ### `GET /organizations/{org_id}/certificates/{cert_id}/download`
 - Auth required: yes

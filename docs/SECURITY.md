@@ -1,6 +1,6 @@
 # PKI Management System - Security Documentation
 
-**Last Updated**: March 8, 2026
+**Last Updated**: March 15, 2026
 **Status**: Deployment guidance for the current codebase
 
 ---
@@ -316,7 +316,43 @@ except subprocess.TimeoutExpired:
 
 ---
 
-### 11. Encryption at Rest (Issue #9)
+### 11. Root CA Private Key Access Control
+
+**Vulnerability**: Operations using Root CA private key (issuing intermediate CAs, revoking root-issued certificates) should require human authorization beyond filesystem access
+
+**Defense**:
+- All operations that touch the Root CA private key require a user-supplied password
+- Operations requiring password:
+  - Creating Intermediate CA (requires Root CA signature)
+  - Revoking certificates issued by Root CA (requires CRL regeneration with Root CA signature)
+
+**Implementation**:
+- Password is provided at runtime via HTML form (`root_user_password` parameter)
+- Password is **never stored, never logged**, and exists only in-memory during subprocess execution
+- Effective unlock passphrase derived via HMAC-SHA256:
+  ```python
+  effective_password = HMAC-SHA256(key=filesystem_password, msg=user_provided_password)
+  ```
+  where `filesystem_password` is the password from `.pwd.enc` file
+
+**Affected Routes**:
+- `POST /organizations/{org_id}/intermediate-ca` — requires `root_user_password` form parameter
+- `POST /organizations/{org_id}/certificates/{cert_id}/revoke` — requires `root_user_password` form parameter if issuer is Root CA
+
+**Security Properties**:
+- **Dual-factor**: Operations require both filesystem-stored and user-supplied passwords
+- **In-memory only**: No persistence to disk or logs
+- **No info leakage**: Wrong password → generic HTTP 500 error (no indication whether password was "close")
+- **No bypass**: Private key cannot be loaded without correct derived passphrase; operation fails at crypto layer
+
+**Error Handling**:
+- Missing or empty password → HTTP 422 (Unprocessable Entity)
+- Wrong password → HTTP 500 (cryptography layer rejects invalid passphrase)
+- Correct password → operation proceeds normally
+
+---
+
+### 13. Encryption at Rest (Issue #9)
 
 **Algorithm**: AES-256-GCM (authenticated encryption)
 - **Key Derivation**: PBKDF2 with SHA256
@@ -358,7 +394,7 @@ def write_encrypted(path: Path, data: bytes) -> None:
 
 ---
 
-### 12. Audit Logging (Issue #10)
+### 14. Audit Logging (Issue #10)
 
 **Information Logged**:
 - Operation type (create_root_ca, revoke_certificate, etc.)
@@ -380,7 +416,7 @@ def write_encrypted(path: Path, data: bytes) -> None:
 
 ---
 
-### 13. Hash Algorithm Selection (Issue #15)
+### 15. Hash Algorithm Selection (Issue #15)
 
 **Removed**: SHA-1 (deprecated in RFC 9155)
 **Available**:
@@ -398,7 +434,7 @@ def parse_hash(name: str) -> hashes.HashAlgorithm:
 
 ---
 
-### 14. Authority Key Identifier Restriction
+### 16. Authority Key Identifier Restriction
 
 `AUTHORITYKEYIDENTIFIER` is intentionally restricted to `keyid`-only values in [`backend/config/policy.json`](../backend/config/policy.json).
 
@@ -417,7 +453,7 @@ Reason:
 
 ---
 
-### 15. Dependency Management (Issue #14)
+### 17. Dependency Management (Issue #14)
 
 **Pinned Versions**:
 ```
@@ -435,7 +471,7 @@ PyJWT==2.10.1
 
 ---
 
-### 16. Certificate Validation (Database Level)
+### 18. Certificate Validation (Database Level)
 
 **Constraints**:
 - `organizations.org_dir` — UNIQUE (prevent folder collisions)

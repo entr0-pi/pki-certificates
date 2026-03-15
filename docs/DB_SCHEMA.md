@@ -101,11 +101,15 @@ These examples reflect objects actively used today.
 ### List certificates for one org
 
 ```sql
-SELECT id, cert_name, cert_type, issuer_cert_id, status, not_after
-FROM certificates
-WHERE organization_id = :org_id
-ORDER BY created_at DESC, id DESC;
+SELECT c.id, c.cert_name, c.cert_type, c.issuer_cert_id, c.status, c.not_after,
+       issuer.cert_type AS issuer_cert_type
+FROM certificates c
+LEFT JOIN certificates issuer ON c.issuer_cert_id = issuer.id
+WHERE c.organization_id = :org_id
+ORDER BY c.created_at DESC, c.id DESC;
 ```
+
+**Note**: The `issuer_cert_type` field is included to enable UI-level logic (e.g., showing password fields for root-issued certificates). This join is optional for filtering queries but recommended for dashboard/listing queries.
 
 ### Check chain linkage quality
 
