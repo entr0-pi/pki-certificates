@@ -1416,11 +1416,17 @@ async def download_org_crl_bundle(org_id: int):
     issuers = [c for c in certs if c["cert_type"] == "intermediate"]
     issuers += [c for c in certs if c["cert_type"] == "root"]
 
+    logger.info(f"CRL Bundle: Found {len(issuers)} total issuers (intermediates + roots) for org_id={org_id}")
+
     crl_pems: list[bytes] = []
     for issuer in issuers:
         crl_path = _resolve_crl_path_for_cert(org, issuer)
+        logger.info(f"CRL Bundle: Issuer '{issuer['cert_name']}' (id={issuer['id']}) -> path={crl_path}, exists={crl_path.exists() if crl_path else False}")
         if crl_path and crl_path.exists():
             crl_pems.append(file_crypto.read_encrypted(crl_path).strip())
+            logger.info(f"CRL Bundle: Added CRL for '{issuer['cert_name']}'")
+
+    logger.info(f"CRL Bundle: Collected {len(crl_pems)} CRLs out of {len(issuers)} issuers")
 
     if not crl_pems:
         return Response(content="No CRLs available yet. Revoke a certificate first.", status_code=404)
