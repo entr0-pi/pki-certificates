@@ -55,6 +55,7 @@ Use this in order, and record each step as PASS/FAIL with screenshot + note.
 - [ ] Policy Enforcement - Root CA: try entering invalid email format and confirm validation error.
 - [ ] Policy Enforcement - Root CA: verify EC curve dropdown only shows policy-allowed curves.
 - [ ] Policy Enforcement - Root CA: verify default validity matches policy if not overridden.
+- [ ] Policy Enforcement - Root CA: verify root password field enforces the minimum length from `policy.json` (`role_defaults.root.ROOT_PASSWORD_LENGTH`).
 - [ ] Fill valid root data and create root cert.
 - [ ] Confirm success response and return to org dashboard.
 - [ ] Verify root cert appears in table with status `active`.

@@ -14,7 +14,7 @@ This application provides a complete, self-hosted certificate authority (CA) man
 - **Certificate Revocation Lists** — Automatic CRL generation and distribution when certificates are revoked; public endpoints for external validators.
 - **Encrypted Storage** — Certificate private keys and sensitive data encrypted at rest; decryption only on demand.
 - **Audit Logging** — Track all certificate operations (creation, renewal, revocation) with user attribution and timestamps.
-- **Policy-Driven Defaults** — Enforce certificate constraints (validity periods, key algorithms, SAN validation) via centralized policy configuration.
+- **Policy-Driven Defaults** — Enforce certificate constraints (validity periods, key algorithms, SAN validation, and root password minimum length) via centralized policy configuration.
 
 ### Use Cases
 
@@ -167,7 +167,7 @@ backend/
   intermediate_ca_create_crypto.py
   end_entity_create_crypto.py
   config/
-    policy.json             Certificate policy and defaults
+    policy.json             Certificate policy, defaults, and root password length requirements
     rbac.json               Route-to-role authorization map
   openssl/
     config.txt              OpenSSL config assets (for reference only, not used)
