@@ -8,7 +8,7 @@
       "DEFAULT_DAYS": "7300",
       "DEFAULT_CRL_DAYS": "3650",
       "DEFAULT_RSA_KEY_BITS": "4096",
-      "ROOT_PASSWORD_LENGTH": "20",
+      "ROOT_PASSWORD_LENGTH": "32",
       "KEYUSAGE": "critical, keyCertSign, cRLSign",
       "BASICCONSTRAINTS": "critical, CA:true, pathlen:1",
       "AUTHORITYKEYIDENTIFIER": "keyid",
