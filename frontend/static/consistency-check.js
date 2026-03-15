@@ -2,93 +2,74 @@
     function renderConsistencyResults(data) {
         var html = "";
 
+        // Status banner
         if (data.success) {
             html += '<div role="alert" class="alert alert-success mb-4">';
             html += '<svg xmlns="http://www.w3.org/2000/svg" class="stroke-current shrink-0 h-6 w-6" fill="none" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>';
-            html += '<div><h3 class="font-semibold">All consistency checks passed ✅</h3></div></div>';
+            html += '<div><h3 class="font-semibold">All checks passed ✅</h3></div></div>';
         } else {
             html += '<div role="alert" class="alert alert-error mb-4">';
-            html += '<svg xmlns="http://www.w3.org/2000/svg" class="stroke-current shrink-0 h-6 w-6" fill="none" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 14l-2-2m0 0l-2-2m2 2l2-2m-2 2l-2 2m0 0l2 2m-2-2l-2 2"></path></svg>';
-            html += "<div><h3 class=\"font-semibold\">Inconsistencies found</h3>";
-            if (data.error) {
-                html += "<p class=\"text-sm\">" + data.error + "</p>";
-            }
-            html += "</div></div>";
+            html += '<svg xmlns="http://www.w3.org/2000/svg" class="stroke-current shrink-0 h-6 w-6" fill="none" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4v2m0 4v2M7.08 6.06A9 9 0 1020.94 19.92M7.08 6.06l5.78 5.78m0 0l5.78-5.78"/></svg>';
+            html += "<div><h3 class=\"font-semibold\">Issues found</h3></div></div>";
         }
 
+        // Issues section (most important)
+        if (data.issues && data.issues.length > 0) {
+            var errorCount = data.issues.filter(i => i.level === "error").length;
+            var warningCount = data.issues.filter(i => i.level === "warning").length;
+            html += '<div class="mb-6">';
+            html += '<h3 class="font-semibold text-base mb-3">🔍 Issues Found</h3>';
+
+            // Separate errors and warnings
+            if (errorCount > 0) {
+                html += '<div class="mb-4"><p class="text-xs font-semibold text-error mb-2">ERRORS (' + errorCount + ')</p>';
+                html += '<div class="space-y-2">';
+                data.issues.filter(i => i.level === "error").forEach(function (issue) {
+                    html += '<div class="bg-error/10 border-l-2 border-error rounded p-3 text-sm">';
+                    html += '<p class="font-mono text-xs">' + escapeHtml(issue.message) + '</p>';
+                    html += '</div>';
+                });
+                html += '</div></div>';
+            }
+
+            if (warningCount > 0) {
+                html += '<div><p class="text-xs font-semibold text-warning mb-2">WARNINGS (' + warningCount + ')</p>';
+                html += '<div class="space-y-2">';
+                data.issues.filter(i => i.level === "warning").forEach(function (issue) {
+                    html += '<div class="bg-warning/10 border-l-2 border-warning rounded p-3 text-sm">';
+                    html += '<p class="font-mono text-xs">' + escapeHtml(issue.message) + '</p>';
+                    html += '</div>';
+                });
+                html += '</div></div>';
+            }
+
+            html += '</div>';
+        }
+
+        // Summary stats
         if (data.stats) {
             var stats = data.stats;
-            var tests = [
-                ["Certificate file exists", stats.missing_files],
-                ["Subject fields match DB", stats.subject_mismatches],
-                ["Issuer linkage consistency", stats.issuer_link_mismatches],
-                ["Serial format validity", stats.serial_format_issues],
-                ["Serial uniqueness (global)", stats.serial_duplicates_global],
-                ["Serial uniqueness (per org)", stats.serial_duplicates_per_org],
-                ["Validity dates match DB", stats.validity_mismatches],
-                ["Validity ranges are valid", stats.invalid_validity_ranges],
-                ["Type-policy consistency", stats.type_policy_mismatches],
-                ["Artifact path integrity", stats.artifact_path_mismatches],
-                ["Private key matches cert", stats.key_cert_mismatches],
-                ["Private key loadability", stats.key_load_failures],
-                ["CSR consistency", stats.csr_mismatches],
-                ["CRL file presence", stats.crl_mismatches],
-                ["CRL semantic consistency", stats.crl_semantic_mismatches],
-                ["No orphaned records", stats.orphaned_records],
-                ["Status-state consistency", stats.status_state_mismatches],
-                ["Encryption/naming policy", stats.encryption_naming_mismatches],
-                ["Hash integrity baseline", stats.hash_mismatches],
-            ];
-
-            html += '<div class="mb-4"><h4 class="font-semibold text-sm mb-2">Test Results</h4>';
-            html += '<div class="space-y-2 text-sm">';
-
-            tests.forEach(function (test) {
-                var label = test[0];
-                var failures = test[1];
-                var fail = Number(failures || 0) > 0;
-                var badgeClass = fail ? "badge-error" : "badge-success";
-                var statusText = fail ? "FAIL (" + failures + ")" : "OK";
-                var icon = fail
-                    ? '<svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4 text-error" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/></svg>'
-                    : '<svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4 text-success" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"/></svg>';
-
-                html += '<div class="flex items-center justify-between bg-base-200 rounded-box p-2">';
-                html += '<div class="flex items-center gap-2">' + icon + "<span>" + label + "</span></div>";
-                html += '<span class="badge ' + badgeClass + ' badge-sm">' + statusText + "</span>";
-                html += "</div>";
-            });
-
-            html += '<div class="mt-3 text-xs text-base-content/70">';
-            html += "Checked certificates: " + (stats.checked_certs || 0) + " / " + (stats.total_certs || 0) + "<br>";
-            html += "Hash tracked files: " + (stats.hash_tracked_files || 0) + ", new baseline entries: " + (stats.hash_new_entries || 0) + "<br>";
-            if (stats.crl_certs_checked !== undefined) {
-                html += "Certificates with CRLs checked: " + (stats.crl_certs_checked || 0);
-            } else {
-                html += "Warnings: " + (stats.warnings || 0);
-            }
-            html += "</div></div></div>";
-        }
-
-        if (data.issues && data.issues.length > 0) {
-            html += '<div><h4 class="font-semibold text-sm mb-2">Issues Found (' + (data.issue_count || data.issues.length) + ")</h4>";
-            html += '<div class="space-y-2 text-sm max-h-64 overflow-y-auto">';
-            data.issues.forEach(function (issue) {
-                var bgClass = issue.level === "error" ? "bg-error/10 border-error" : "bg-warning/10 border-warning";
-                var badgeClass = issue.level === "error" ? "badge-error" : "badge-warning";
-                html += '<div class="card ' + bgClass + ' border p-3">';
-                html += '<div class="badge ' + badgeClass + ' badge-sm">' + String(issue.level || "").toUpperCase() + "</div>";
-                html += '<p class="text-xs mt-2">' + issue.message + "</p>";
-                html += "</div>";
-            });
-            html += "</div></div>";
-        } else if (!data.success && data.error) {
-            html += '<div class="text-sm text-base-content/70">No issues details available.</div>';
-        } else {
-            html += '<div class="text-sm text-success">No issues found. Database and PEM files are consistent.</div>';
+            html += '<div class="mb-6">';
+            html += '<h3 class="font-semibold text-base mb-3">📊 Summary</h3>';
+            html += '<div class="grid grid-cols-2 gap-3 text-sm">';
+            html += '<div class="bg-base-200 rounded p-3"><p class="text-xs opacity-70">Certificates</p><p class="text-lg font-semibold">' + (stats.checked_certs || 0) + ' / ' + (stats.total_certs || 0) + '</p></div>';
+            html += '<div class="bg-base-200 rounded p-3"><p class="text-xs opacity-70">Files Tracked</p><p class="text-lg font-semibold">' + (stats.hash_tracked_files || 0) + '</p></div>';
+            html += '</div>';
+            html += '</div>';
         }
 
         return html;
+    }
+
+    function escapeHtml(text) {
+        var map = {
+            '&': '&amp;',
+            '<': '&lt;',
+            '>': '&gt;',
+            '"': '&quot;',
+            "'": '&#039;'
+        };
+        return String(text || '').replace(/[&<>"']/g, function(m) { return map[m]; });
     }
 
     window.runConsistencyCheck = async function runConsistencyCheck() {
