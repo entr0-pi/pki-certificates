@@ -1938,7 +1938,17 @@ async def create_root_ca(
             _trigger_crl_regeneration(org, cert_id, created_root, root_user_password=root_ca_password)
 
         # Auto-revoke previous cert if this is a renewal
-        _handle_renewal_revocation(org, org_id, renewal_of_cert_id)
+        renewal_error = _handle_renewal_revocation(org, org_id, renewal_of_cert_id)
+        if renewal_error:
+            return templates.TemplateResponse(
+                "error.html",
+                {
+                    "request": request,
+                    "error_message": renewal_error["message"],
+                    "child_certs": renewal_error.get("child_certs", []),
+                    "org_name": org["name"],
+                },
+            )
 
         # Show success page with generated password
         return templates.TemplateResponse(
@@ -2124,30 +2134,6 @@ async def create_intermediate_ca(
     if eccurve.strip():
         params["eccurve"] = eccurve.strip()
 
-    # Check if renewal is blocked by active subordinate certificates
-    if renewal_of_cert_id and renewal_of_cert_id.strip():
-        try:
-            old_cert_id = int(renewal_of_cert_id)
-            old_cert = db.get_certificate_by_id_for_organization(old_cert_id, org_id)
-            if old_cert and old_cert["cert_type"] == "intermediate":
-                org_certs = db.list_certificates_by_organization(org_id)
-                active_children = [
-                    c for c in org_certs
-                    if c["issuer_cert_id"] == old_cert_id and c["status"] == "active"
-                ]
-                if active_children:
-                    child_names = ", ".join([f"{c['cert_name']} ({c['cert_type']})" for c in active_children])
-                    return templates.TemplateResponse(
-                        "error.html",
-                        {
-                            "request": request,
-                            "error_message": f"Cannot renew this certificate because it has active subordinate certificates: {child_names}. Please revoke child certificates first.",
-                            "org_name": org["name"],
-                        },
-                    )
-        except (ValueError, Exception):
-            pass  # Ignore validation errors and proceed
-
     try:
         create_output = _run_create_cert_subprocess(params)
 
@@ -2185,7 +2171,17 @@ async def create_intermediate_ca(
             _trigger_crl_regeneration(org, cert_id, created_intermediate, root_user_password=root_user_password)
 
         # Auto-revoke previous cert if this is a renewal
-        _handle_renewal_revocation(org, org_id, renewal_of_cert_id)
+        renewal_error = _handle_renewal_revocation(org, org_id, renewal_of_cert_id)
+        if renewal_error:
+            return templates.TemplateResponse(
+                "error.html",
+                {
+                    "request": request,
+                    "error_message": renewal_error["message"],
+                    "child_certs": renewal_error.get("child_certs", []),
+                    "org_name": org["name"],
+                },
+            )
 
         return RedirectResponse(f"/organizations/{org_id}/manage", status_code=303)
 
@@ -2443,7 +2439,17 @@ async def create_end_entity(
             logger.warning(f"Audit log failed (non-fatal): {e}")
 
         # Auto-revoke previous cert if this is a renewal
-        _handle_renewal_revocation(org, org_id, renewal_of_cert_id)
+        renewal_error = _handle_renewal_revocation(org, org_id, renewal_of_cert_id)
+        if renewal_error:
+            return templates.TemplateResponse(
+                "error.html",
+                {
+                    "request": request,
+                    "error_message": renewal_error["message"],
+                    "child_certs": renewal_error.get("child_certs", []),
+                    "org_name": org["name"],
+                },
+            )
 
         return RedirectResponse(f"/organizations/{org_id}/manage", status_code=303)
 
