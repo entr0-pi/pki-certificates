@@ -217,6 +217,21 @@
                     <input type="hidden" name="subjectAltName" value="">
                     <input type="hidden" name="renewal_of_cert_id" value="">
                     <input type="hidden" name="enddate">
+                    <div class="form-control md:col-span-3">
+                      <label class="label">
+                        <span class="label-text text-sm font-semibold">Root CA Password</span>
+                        <span class="label-text-alt text-error">Required</span>
+                      </label>
+                      <input type="password" name="root_user_password"
+                        class="input input-bordered input-sm"
+                        placeholder="Enter Root CA unlock password"
+                        required autocomplete="off">
+                      <label class="label">
+                        <span class="label-text-alt text-xs text-base-content/60">
+                          Not stored. Used only to authorize this operation.
+                        </span>
+                      </label>
+                    </div>
                     <div class="flex gap-2">
                         <button class="btn btn-primary" type="submit">Create Intermediate CA</button>
                     </div>

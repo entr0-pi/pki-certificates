@@ -1036,14 +1036,17 @@ def get_certificate_statistics(org_id: Optional[int] = None) -> Dict[str, int]:
 def list_certificates_by_organization(org_id: int) -> List[Dict[str, Any]]:
     """
     List certificates for an organization (most recent first).
+    Includes issuer_cert_type via left join to issuer certificate.
     """
     with get_db_connection() as conn:
         result = conn.execute(
             text("""
-            SELECT *
-            FROM certificates
-            WHERE organization_id = :org_id
-            ORDER BY created_at DESC, id DESC
+            SELECT c.*,
+                   issuer.cert_type AS issuer_cert_type
+            FROM certificates c
+            LEFT JOIN certificates issuer ON c.issuer_cert_id = issuer.id
+            WHERE c.organization_id = :org_id
+            ORDER BY c.created_at DESC, c.id DESC
             """),
             {"org_id": org_id},
         )

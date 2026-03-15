@@ -14,6 +14,7 @@ from cryptography.hazmat.primitives import hashes, serialization
 
 from helpers import load_json
 from folder import PkiLayout
+import cert_crypto
 import file_crypto
 
 
@@ -77,6 +78,7 @@ def generate_crl(
     issuer_pwd_path: Path,
     crl_output_path: Path,
     revoked_list: list[dict],
+    override_passphrase: bytes | None = None,
 ) -> None:
     """
     Generate a Certificate Revocation List (CRL).
@@ -98,7 +100,10 @@ def generate_crl(
     if not issuer_key_path.exists():
         raise FileNotFoundError(f"Issuer private key not found: {issuer_key_path}")
 
-    passphrase = file_crypto.read_encrypted(issuer_pwd_path).strip() if issuer_pwd_path.exists() else b""
+    if override_passphrase is not None:
+        passphrase = override_passphrase
+    else:
+        passphrase = file_crypto.read_encrypted(issuer_pwd_path).strip() if issuer_pwd_path.exists() else b""
     issuer_key = serialization.load_pem_private_key(
         file_crypto.read_encrypted(issuer_key_path),
         password=passphrase if passphrase else None,
@@ -165,6 +170,15 @@ def main() -> None:
     issuer_type = params["issuer_type"]
     revoked_certs = params.get("revoked_certs", [])
 
+    root_user_password = params.get("root_user_password")
+    override_passphrase = None
+    if issuer_type == "root":
+        if not root_user_password:
+            sys.exit("root_user_password is required when issuer_type is root")
+        issuer_paths = resolve_issuer_paths(org_dir, issuer_name, issuer_artifact_name, issuer_type, layout)
+        fs_password = file_crypto.read_encrypted(issuer_paths["pwd_path"]).strip()
+        override_passphrase = cert_crypto.derive_root_key_password(fs_password, root_user_password)
+
     try:
         issuer_paths = resolve_issuer_paths(org_dir, issuer_name, issuer_artifact_name, issuer_type, layout)
 
@@ -174,6 +188,7 @@ def main() -> None:
             issuer_pwd_path=issuer_paths["pwd_path"],
             crl_output_path=issuer_paths["crl_path"],
             revoked_list=revoked_certs,
+            override_passphrase=override_passphrase,
         )
 
     except Exception as e:

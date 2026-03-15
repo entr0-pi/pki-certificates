@@ -1633,7 +1633,7 @@ def _build_certificate_chain_pem(org: dict, cert: dict, org_id: int, include_roo
 # Helper: CRL Regeneration
 # ============================================================================
 
-def _trigger_crl_regeneration(org: dict, issuer_id: int, issuer_cert: dict) -> None:
+def _trigger_crl_regeneration(org: dict, issuer_id: int, issuer_cert: dict, root_user_password: str | None = None) -> None:
     """
     Trigger CRL regeneration for an issuer after revocation.
     Handles subprocess call, CRL parsing, and DB persistence.
@@ -1651,6 +1651,10 @@ def _trigger_crl_regeneration(org: dict, issuer_id: int, issuer_cert: dict) -> N
         "issuer_type": issuer_type,
         "revoked_certs": revoked_certs,
     }
+
+    # Add root_user_password if issuer is root
+    if issuer_type == "root" and root_user_password:
+        params["root_user_password"] = root_user_password
 
     # Call CRL generation script
     temp_path = None
@@ -1942,6 +1946,7 @@ async def create_intermediate_ca(
     enddate: str = Form(""),
     eccurve: str = Form(""),
     renewal_of_cert_id: str = Form(""),
+    root_user_password: str = Form(...),
 ):
     """Create Intermediate CA for an organization and register it in the database."""
     org = db.get_organization_by_id(org_id)
@@ -1967,6 +1972,10 @@ async def create_intermediate_ca(
                 "org_name": org["name"],
             },
         )
+
+    # Validate root CA password
+    if not root_user_password.strip():
+        raise HTTPException(status_code=422, detail="Root CA password is required.")
 
     # Validate email format if provided
     if email and not re.match(r"^[^@\s]+@[^@\s]+\.[^@\s]+$", email):
@@ -2029,6 +2038,7 @@ async def create_intermediate_ca(
         "email": subject_values["email"],
         "subjectAltName": subjectAltName,
         "PKI_BASE_URL": os.environ.get("PKI_BASE_URL", "http://localhost:8000"),
+        "root_user_password": root_user_password,
     }
 
     if enddate.strip():
@@ -2074,7 +2084,7 @@ async def create_intermediate_ca(
         # Ensure a baseline (possibly empty) CRL exists immediately for this CA.
         created_intermediate = db.get_certificate_by_id_for_organization(cert_id, org_id)
         if created_intermediate:
-            _trigger_crl_regeneration(org, cert_id, created_intermediate)
+            _trigger_crl_regeneration(org, cert_id, created_intermediate, root_user_password=root_user_password)
 
         # Auto-revoke previous cert if this is a renewal
         _handle_renewal_revocation(org, org_id, renewal_of_cert_id)
@@ -2355,6 +2365,7 @@ async def revoke_certificate(
     org_id: int,
     cert_id: int,
     reason: str = Form("unspecified"),
+    root_user_password: str = Form(""),
 ):
     """Revoke a certificate and regenerate CRL."""
     # Validate organization
@@ -2441,6 +2452,18 @@ async def revoke_certificate(
             },
         )
 
+    # Validate root CA password if issuer is root
+    if issuer_type == "root" and not root_user_password.strip():
+        return templates.TemplateResponse(
+            "error.html",
+            {
+                "request": request,
+                "error_title": "Revocation Failed",
+                "error_message": "Root CA password is required to revoke certificates issued by the Root CA.",
+                "org_name": org["name"],
+            },
+        )
+
     # SECURITY FIX: Check if this is a CA cert with active children before revoking
     if cert["cert_type"] in ("root", "intermediate"):
         # Query for active certificates issued by this CA
@@ -2481,7 +2504,7 @@ async def revoke_certificate(
         logger.warning(f"Audit log failed (non-fatal): {e}")
 
     # Regenerate CRL for the issuer
-    _trigger_crl_regeneration(org, issuer_id, issuer_cert)
+    _trigger_crl_regeneration(org, issuer_id, issuer_cert, root_user_password=root_user_password if issuer_type == "root" else None)
 
     # Redirect back to dashboard
     root_ca_exists = bool(get_latest_active_root_ca_name(org_id))

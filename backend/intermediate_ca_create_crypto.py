@@ -40,7 +40,7 @@ def main() -> None:
     frontend = load_json(args.params)
     require_keys(
         frontend,
-        ["C", "ST", "L", "O", "OU", "CN", "org_dir", "cert_name", "issuer_name"]
+        ["C", "ST", "L", "O", "OU", "CN", "org_dir", "cert_name", "issuer_name", "root_user_password"]
     )
 
     org_dir = Path(frontend["org_dir"])
@@ -74,7 +74,8 @@ def main() -> None:
     if not issuer_pwd_path.exists():
         sys.exit(f"Issuer password file not found: {issuer_pwd_path}")
 
-    issuer_passphrase = file_crypto.read_encrypted(issuer_pwd_path).strip()
+    fs_passphrase = file_crypto.read_encrypted(issuer_pwd_path).strip()
+    issuer_passphrase = cert_crypto.derive_root_key_password(fs_passphrase, frontend["root_user_password"])
     issuer_cert = cert_crypto.load_certificate(issuer_cert_path)
     issuer_key = cert_crypto.load_private_key(issuer_key_path, issuer_passphrase)
 

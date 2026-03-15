@@ -128,6 +128,7 @@
                                 data-type="{{ cert.cert_type }}"
                                 data-status="{{ cert.status }}"
                                 data-not-after="{{ cert.not_after or '' }}"
+                                data-issuer-type="{{ cert.issuer_cert_type or '' }}"
                             >
                                 <td class="font-semibold">
                                     {% if perms.get("can_view_popup", True) %}
@@ -185,7 +186,7 @@
                                             <li><a href="/organizations/{{ organization.id }}/certificates/{{ cert.id }}/renew">Renew</a></li>
                                             {% endif %}
                                             {% if perms.get("can_revoke", False) and cert.status == "active" %}
-                                            <li><a href="#" onclick="openRevokeModal({{ cert.id }}, '{{ cert.cert_name }}'); return false;" class="text-error">Revoke</a></li>
+                                            <li><a href="#" onclick="openRevokeModal({{ cert.id }}, '{{ cert.cert_name }}', this.closest('tr').dataset.issuerType); return false;" class="text-error">Revoke</a></li>
                                             {% endif %}
                                         </ul>
                                     </div>
@@ -308,6 +309,18 @@
                         <option value="aACompromise">AA Compromise</option>
                     </select>
                 </div>
+                <div id="rootPasswordField" class="form-control hidden">
+                  <label class="label"><span class="label-text text-sm">Root CA Password</span></label>
+                  <input type="password" id="rootPasswordInput" name="root_user_password"
+                    class="input input-bordered w-full"
+                    placeholder="Enter Root CA unlock password"
+                    autocomplete="off">
+                  <label class="label">
+                    <span class="label-text-alt text-xs text-base-content/60">
+                      Required — this certificate was issued by the Root CA.
+                    </span>
+                  </label>
+                </div>
                 <div class="modal-action">
                     <button type="button" class="btn btn-ghost" onclick="revokeModal.close()">Cancel</button>
                     <button type="submit" class="btn btn-error">Revoke</button>
@@ -408,9 +421,20 @@
 
         const revokeModal = document.getElementById("revokeModal");
         const revokeForm = document.getElementById("revokeForm");
-        function openRevokeModal(certId, certName) {
+        function openRevokeModal(certId, certName, issuerType) {
             document.getElementById("certNameDisplay").value = certName;
             revokeForm.action = `/organizations/{{ organization.id }}/certificates/${certId}/revoke`;
+
+            const rootField = document.getElementById("rootPasswordField");
+            const rootInput = document.getElementById("rootPasswordInput");
+            rootInput.value = "";
+            if (issuerType === "root") {
+                rootField.classList.remove("hidden");
+                rootInput.required = true;
+            } else {
+                rootField.classList.add("hidden");
+                rootInput.required = false;
+            }
             revokeModal.showModal();
         }
 

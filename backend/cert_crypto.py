@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import hmac
+import hashlib
 import ipaddress
 from datetime import datetime
 from pathlib import Path
@@ -287,6 +289,14 @@ def parse_authority_key_identifier(
 # ---------------------------
 # Key Management
 # ---------------------------
+def derive_root_key_password(filesystem_password: bytes, user_password: str) -> bytes:
+    """Derive the effective root CA unlock passphrase via HMAC-SHA256.
+    filesystem_password: raw bytes from .pwd.enc (HMAC key)
+    user_password: user-supplied string from HTTP request (HMAC message)
+    """
+    return hmac.new(filesystem_password, user_password.encode("utf-8"), hashlib.sha256).digest()
+
+
 def generate_ec_key(curve_name: str) -> ec.EllipticCurvePrivateKey:
     """Generate EC private key with specified curve."""
     curve = parse_curve(curve_name)
