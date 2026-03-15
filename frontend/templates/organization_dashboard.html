@@ -161,10 +161,7 @@
                                 </td>
                                 <td class="text-xs">
                                     {% if cert.status == 'revoked' %}
-                                    <div class="flex flex-col gap-1">
-                                        <span class="text-base-content/60">Revocation date:</span>
-                                        <span>{{ cert.revoked_at[:10] if cert.revoked_at else "-" }}</span>
-                                    </div>
+                                    <span>Revocation date: {{ cert.revoked_at[:10] if cert.revoked_at else "-" }}</span>
                                     {% else %}
                                     <div class="flex flex-col gap-1">
                                         <span>{{ cert.not_after[:10] if cert.not_after else "-" }}</span>
