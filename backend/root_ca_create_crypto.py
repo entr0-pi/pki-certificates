@@ -14,6 +14,7 @@ from folder import PkiLayout, ensure_password_file, init_root_workspace
 from root_ca_validate import validate_and_print
 import cert_crypto
 import file_crypto
+import secrets
 
 
 def ensure_passphrase_file(pwd_path: Path) -> bytes:
@@ -56,7 +57,7 @@ def main() -> None:
 
     # Read frontend params (root_ca.json)
     frontend = load_json(args.params)
-    require_keys(frontend, ["C", "ST", "L", "O", "OU", "CN", "org_dir", "cert_name"])
+    require_keys(frontend, ["C", "ST", "L", "O", "OU", "CN", "org_dir", "cert_name", "root_ca_password"])
 
     org_dir = Path(frontend["org_dir"])
     cert_name = str(frontend["cert_name"])
@@ -68,7 +69,27 @@ def main() -> None:
     if ws["ca_exists"]:
         sys.exit(" Root CA already exists (key/csr/cert present) ")
 
-    passphrase = ensure_passphrase_file(ws["pwd_path"])
+    # Two-factor protection for root CA private key
+    # 1. Generate filesystem password (stored in .pwd.enc)
+    # 2. User provides password (never stored, only used to derive key)
+    # 3. Effective key = HMAC-SHA256(fs_password, user_password)
+    root_user_password = str(frontend["root_ca_password"])
+
+    # Generate random filesystem password (32 bytes, base64 encoded for storage)
+    fs_password_bytes = secrets.token_bytes(32)
+    fs_password = fs_password_bytes.hex()
+
+    # Store filesystem password in .pwd.enc
+    ws["pwd_path"].parent.mkdir(parents=True, exist_ok=True)
+    file_crypto.write_encrypted(ws["pwd_path"], (fs_password + "\n").encode())
+    if os.name == "posix":
+        ws["pwd_path"].chmod(0o600)
+
+    # Derive effective passphrase using HMAC-SHA256
+    effective_passphrase = cert_crypto.derive_root_key_password(
+        fs_password_bytes,
+        root_user_password
+    )
 
     # Curve/hash/enddate are policy-driven but can be overridden by params
     curve_name = str(frontend.get("eccurve") or root_defaults["ec_curve"])
@@ -105,10 +126,11 @@ def main() -> None:
 
     # 1) Generate key
     key = cert_crypto.generate_ec_key(curve_name)
+    # Encrypt root private key with effective passphrase (derived from fs_password + user_password)
     cert_crypto.save_private_key(
         key,
         ws["key_path"],
-        passphrase,
+        effective_passphrase,
         cipher_name
     )
 

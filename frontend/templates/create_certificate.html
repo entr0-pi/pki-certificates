@@ -127,6 +127,21 @@
                     <input type="hidden" name="subjectAltName" value="">
                     <input type="hidden" name="renewal_of_cert_id" value="">
                     <input type="hidden" name="enddate">
+                    <div class="form-control md:col-span-3">
+                      <label class="label">
+                        <span class="label-text text-sm font-semibold">Root CA Password</span>
+                        <span class="label-text-alt text-error">Required</span>
+                      </label>
+                      <input type="password" name="root_ca_password"
+                        class="input input-bordered input-sm"
+                        placeholder="Create a strong password to protect this Root CA"
+                        required autocomplete="off">
+                      <label class="label">
+                        <span class="label-text-alt text-xs text-base-content/60">
+                          This password is required every time you create an Intermediate CA or revoke certificates issued by the Root CA. Keep it safe!
+                        </span>
+                      </label>
+                    </div>
                     <div class="flex gap-2">
                         <button class="btn btn-primary" type="submit">Create Root CA</button>
                     </div>

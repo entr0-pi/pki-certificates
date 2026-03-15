@@ -252,10 +252,21 @@ Legend: `✓` allowed, `-` denied, `public` no auth required.
   "subjectAltName": "",
   "enddate": "2099-12-31",
   "eccurve": "secp384r1",
-  "renewal_of_cert_id": ""
+  "renewal_of_cert_id": "",
+  "root_ca_password": "user-provided-password-to-protect-root-ca"
 }
 ```
+- **Security note - Two-Factor Root CA Protection**:
+  - `root_ca_password` is required and user-provided (e.g., "MySecurePassword123")
+  - System also generates a random filesystem password stored in `.pwd.enc`
+  - Root CA private key is encrypted with: `HMAC-SHA256(key=filesystem_password, msg=root_ca_password)`
+  - **The user password is NEVER stored to disk and NEVER logged** — it exists only in-memory during private key encryption
+  - User must provide the same password later when:
+    - Creating an Intermediate CA (to unlock root CA for signing)
+    - Revoking certificates issued by the root CA (to unlock root CA for CRL regeneration)
+  - See [SECURITY.md - Root CA Private Key Access Control](#root-ca-private-key-access-control-two-factor) for full details
 - Response JSON: none (HTML page with result)
+- HTTP 422: if `root_ca_password` is empty or missing
 
 ### `POST /organizations/{org_id}/intermediate-ca`
 - Auth required: yes

@@ -1774,6 +1774,7 @@ async def create_root_ca(
     enddate: str = Form(""),
     eccurve: str = Form(""),
     renewal_of_cert_id: str = Form(""),
+    root_ca_password: str = Form(...),
 ):
     """Create Root CA for an organization and register it in the database."""
     org = db.get_organization_by_id(org_id)
@@ -1798,6 +1799,10 @@ async def create_root_ca(
                 "org_name": org["name"],
             },
         )
+
+    # Validate root CA password
+    if not root_ca_password.strip():
+        raise HTTPException(status_code=422, detail="Root CA password is required.")
 
     # Validate email format if provided
     if email and not re.match(r"^[^@\s]+@[^@\s]+\.[^@\s]+$", email):
@@ -1832,6 +1837,7 @@ async def create_root_ca(
         "email": email,
         "subjectAltName": subjectAltName,
         "PKI_BASE_URL": os.environ.get("PKI_BASE_URL", "http://localhost:8000"),
+        "root_ca_password": root_ca_password,
     }
 
     if enddate.strip():
