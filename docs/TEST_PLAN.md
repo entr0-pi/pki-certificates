@@ -192,7 +192,7 @@ Use this in order, and record each step as PASS/FAIL with screenshot + note.
 - [ ] Open `/healthz` and verify liveness response.
 - [ ] Open `/toolbox` and verify page loads (admin only).
 
-## Phase 7: RBAC Validation (Critical)
+## Phase 7: RBAC Validation
 
 Log out between roles and re-login each time.
 
@@ -290,3 +290,64 @@ Run `pytest tests/ -v` and confirm the relevant tests are not skipped in your de
 - [ ] PKCS#12 password prompt flow verified for eligible roles and certificate types.
 - [ ] Dual root password flow verified for root creation, intermediate issuance, and root-issued revocation.
 - [ ] Any failures logged with exact phase item, URL, role, and screenshot.
+
+---
+
+## Gap Report Template
+
+Use this section after executing the checklist to capture any gaps, failures, skipped coverage, or documentation mismatches.
+
+### Execution Summary
+
+- Test date:
+- Tester:
+- Environment:
+- App version / branch:
+- Browser(s):
+- Roles tested:
+- Overall result: PASS / PASS WITH GAPS / FAIL
+
+### Gap Entry Template
+
+```text
+Gap ID:
+Phase:
+Checklist item:
+Category: Functional / RBAC / Validation / Security / UI / Data / Documentation / Environment
+Severity: Critical / High / Medium / Low
+Role:
+URL / Route:
+Preconditions:
+Steps performed:
+Expected result:
+Actual result:
+Impact:
+Evidence: screenshot / log / video / query
+Suspected cause:
+Workaround:
+Retest status: Not Retested / Fixed / Still Failing
+Notes:
+```
+
+### Coverage Gaps
+
+Record checklist items that were not executed.
+
+| Phase | Checklist item | Reason not tested | Follow-up owner |
+|---|---|---|---|
+| Phase X | Item text | Missing data / blocked env / time limit / not applicable | Name |
+
+### Documentation Mismatches
+
+Record cases where behavior differs from project documentation.
+
+| Doc | Section | Expected per doc | Actual behavior | Action needed |
+|---|---|---|---|---|
+| `docs/ROUTES.md` | Route entry | Example expected behavior | Example actual behavior | Update doc / fix code |
+
+### Final Notes
+
+- Key risks found:
+- Recommended fixes:
+- Areas requiring retest:
+- Areas not covered:
