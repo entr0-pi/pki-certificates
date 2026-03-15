@@ -1411,9 +1411,10 @@ async def download_org_crl_bundle(org_id: int):
         return Response(content="Organization not found", status_code=404)
 
     certs = db.list_certificates_by_organization(org_id)
-    # Prefer intermediate CRLs first, then root
-    issuers = [c for c in certs if c["cert_type"] == "intermediate" and c["status"] == "active"]
-    issuers += [c for c in certs if c["cert_type"] == "root" and c["status"] == "active"]
+    # Get all CAs (intermediate and root) that have CRLs, regardless of status
+    # Include superseded versions since they may have issued certificates that need revocation checking
+    issuers = [c for c in certs if c["cert_type"] == "intermediate"]
+    issuers += [c for c in certs if c["cert_type"] == "root"]
 
     crl_pems: list[bytes] = []
     for issuer in issuers:
