@@ -39,16 +39,19 @@ For Docker deployment details, example Compose files, and container-specific set
 ```bash
 mkdir my-pki
 cd my-pki
+# copy docker/docker-compose.yml from this repository and adapt it if needed
 nano docker-compose.yml
-# copy/past the one in /docker + adapt at will
+
+# create .env from this repository's .env.example and edit it
+# or generate it from the project root with:
+# python utils/generate_env.py --env dev --output my-pki/.env
+# see utils/QUICKSTART.md for details
+
 nano .env
-# copy/past .env.example
-# or run `python utils/generate_env.py` to create `.env` with generated secret values. Read utils\QUICKSTART.md first.
-# and edit the rest
 docker compose up -d
 ```
 
-The default Compose image is `ghcr.io/entr0-pi/pki-certificates:latest`. See [docker/README.md](docker/README.md) for Docker-specific setup details.
+The default Compose image is `ghcr.io/entr0-pi/pki-certificates:latest`. See [docker/README.md](docker/README.md) for Docker deployment details and [utils/QUICKSTART.md](utils/QUICKSTART.md) for `.env` generation.
 
 ## How-to for local dev
 
