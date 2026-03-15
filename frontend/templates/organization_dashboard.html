@@ -109,7 +109,7 @@
                             <tr>
                                 <th>Name</th>
                                 <th>Type</th>
-                                <th>CN</th>
+                                <th>CN/UUID</th>
                                 <th>Issuer</th>
                                 <th>Created</th>
                                 <th>Status</th>
@@ -142,7 +142,10 @@
                                     {% endif %}
                                 </td>
                                 <td><span class="badge badge-outline">{{ cert.cert_type }}</span></td>
-                                <td class="font-mono text-xs">{{ cert.subject_common_name or "-" }}</td>
+                                <td class="font-mono text-xs">
+                                    {{ cert.subject_common_name or "-" }}
+                                    {% if cert.cert_uuid %}<br><span class="text-base-content/50">{{ cert.cert_uuid[:8] }}-*</span>{% endif %}
+                                </td>
                                 <td class="text-xs">
                                     {% if cert.cert_type in ["root"] %}
                                     <span class="text-base-content/50">-</span>
