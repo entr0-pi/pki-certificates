@@ -2,6 +2,8 @@ from __future__ import annotations
 
 import hmac
 import hashlib
+import secrets
+import string
 import ipaddress
 from datetime import datetime
 from pathlib import Path
@@ -319,6 +321,26 @@ def decode_fs_password(fs_password_raw: bytes | str) -> bytes:
     else:
         fs_password_hex = fs_password_raw
     return bytes.fromhex(fs_password_hex)
+
+
+def generate_secure_password(length: int = 32) -> str:
+    """Generate a cryptographically secure random password.
+
+    Args:
+        length: Password length in characters (default 32)
+
+    Returns:
+        Random password string with good entropy (uppercase, lowercase, digits, symbols)
+    """
+    if length < 12:
+        raise ValueError("Password length must be at least 12 characters for good entropy")
+
+    # Use a diverse character set for good entropy
+    alphabet = string.ascii_letters + string.digits + "!@#$%^&*-_=+"
+
+    # Generate random password using secrets for cryptographic security
+    password = ''.join(secrets.choice(alphabet) for _ in range(length))
+    return password
 
 
 def generate_ec_key(curve_name: str) -> ec.EllipticCurvePrivateKey:

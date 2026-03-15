@@ -1793,9 +1793,11 @@ async def create_root_ca(
     enddate: str = Form(""),
     eccurve: str = Form(""),
     renewal_of_cert_id: str = Form(""),
-    root_ca_password: str = Form(...),
 ):
-    """Create Root CA for an organization and register it in the database."""
+    """Create Root CA for an organization and register it in the database.
+
+    Generates a cryptographically secure password based on policy configuration.
+    """
     org = db.get_organization_by_id(org_id)
     if not org:
         return templates.TemplateResponse(
@@ -1819,9 +1821,10 @@ async def create_root_ca(
             },
         )
 
-    # Validate root CA password
-    if not root_ca_password.strip():
-        raise HTTPException(status_code=422, detail="Root CA password is required.")
+    # Generate secure password from policy configuration
+    root_policy = _load_role_policy("root")
+    password_length = int(root_policy.get("ROOT_PASSWORD_LENGTH", "32"))
+    root_ca_password = cert_crypto.generate_secure_password(password_length)
 
     # Validate email format if provided
     if email and not re.match(r"^[^@\s]+@[^@\s]+\.[^@\s]+$", email):
@@ -1926,7 +1929,17 @@ async def create_root_ca(
         # Auto-revoke previous cert if this is a renewal
         _handle_renewal_revocation(org, org_id, renewal_of_cert_id)
 
-        return RedirectResponse(f"/organizations/{org_id}/manage", status_code=303)
+        # Show success page with generated password
+        return templates.TemplateResponse(
+            "root_ca_password_display.html",
+            {
+                "request": request,
+                "organization": org,
+                "cert_name": cert_name_clean,
+                "generated_password": root_ca_password,
+                "password_length": len(root_ca_password),
+            },
+        )
 
     except subprocess.CalledProcessError as e:
         logger.exception(f"Certificate creation subprocess failed for org_id={org_id}")

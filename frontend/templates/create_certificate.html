@@ -127,20 +127,13 @@
                     <input type="hidden" name="subjectAltName" value="">
                     <input type="hidden" name="renewal_of_cert_id" value="">
                     <input type="hidden" name="enddate">
-                    <div class="form-control md:col-span-3">
-                      <label class="label">
-                        <span class="label-text text-sm font-semibold">Root CA Password</span>
-                        <span class="label-text-alt text-error">Required</span>
-                      </label>
-                      <input type="password" name="root_ca_password"
-                        class="input input-bordered input-sm"
-                        placeholder="Create a strong password to protect this Root CA"
-                        required autocomplete="off">
-                      <label class="label">
-                        <span class="label-text-alt text-xs text-base-content/60">
-                          This password is required every time you create an Intermediate CA or revoke certificates issued by the Root CA. Keep it safe!
-                        </span>
-                      </label>
+                    <div class="alert alert-info mb-4">
+                      <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" class="h-6 w-6 shrink-0 stroke-current">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path>
+                      </svg>
+                      <div>
+                        <span class="text-sm"><strong>Secure Password Generation:</strong> A cryptographically secure password will be automatically generated and shown on the next screen. You must copy and store it securely — you'll need it every time you create an Intermediate CA or revoke certificates issued by the Root CA.</span>
+                      </div>
                     </div>
                     <div class="flex gap-2">
                         <button class="btn btn-primary" type="submit">Create Root CA</button>
