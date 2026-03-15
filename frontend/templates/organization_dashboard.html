@@ -225,15 +225,17 @@
         </div>
 
         <div class="card bg-base-100 shadow-xl mt-6">
-            <div class="collapse collapse-arrow bg-base-100">
-                <input type="checkbox" class="peer" hidden />
-                <div class="collapse-title bg-base-100 text-base font-semibold peer-checked:bg-base-200 cursor-pointer">
-                    Recent Operations
-                </div>
-                <div class="collapse-content hidden peer-checked:block">
+            <div class="card-body p-6">
+                <button class="flex items-center justify-between w-full text-left" onclick="toggleAuditLogs()">
+                    <h2 class="text-lg font-semibold">Recent Operations</h2>
+                    <svg id="auditLogsArrow" xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 transition-transform" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 14l-7 7m0 0l-7-7m7 7V3" />
+                    </svg>
+                </button>
+                <div id="auditLogsContent" class="hidden mt-4">
                     {% if audit_logs %}
-                    <div class="overflow-x-auto max-h-72 overflow-y-auto mt-4">
-                        <table class="table table-zebra">
+                    <div class="overflow-x-auto max-h-72 overflow-y-auto">
+                        <table class="table table-zebra table-sm">
                             <thead><tr><th>Certificate</th><th>Operation</th><th>User</th><th>Date</th><th>Details</th></tr></thead>
                             <tbody>
                                 {% for log in audit_logs %}
@@ -249,7 +251,7 @@
                         </table>
                     </div>
                     {% else %}
-                    <p class="text-base-content/70 italic mt-4">No audit events yet.</p>
+                    <p class="text-base-content/70 italic">No audit events yet.</p>
                     {% endif %}
                 </div>
             </div>
@@ -340,6 +342,14 @@
     </dialog>
 
     <script>
+        // Toggle Recent Operations visibility
+        function toggleAuditLogs() {
+            const content = document.getElementById("auditLogsContent");
+            const arrow = document.getElementById("auditLogsArrow");
+            content.classList.toggle("hidden");
+            arrow.classList.toggle("rotate-180");
+        }
+
         // CRL Distribution - fetch available CRLs
         async function loadCrlList() {
             const loading = document.getElementById("crlLoading");
