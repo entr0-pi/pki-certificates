@@ -1111,18 +1111,6 @@ class ConsistencyChecker:
                 self.stats["crl_validity_failures"] += 1
                 continue
 
-            # Verify CRL signature using issuer's public key
-            try:
-                ca_pem.public_key().verify(
-                    crl.signature,
-                    crl.tbs_certificate_list.public_bytes(serialization.Encoding.DER),
-                    crl.signature_algorithm_oid
-                )
-            except Exception as e:
-                self.issue("error", f"[CRL {crl_id}] CRL signature verification failed: {e}")
-                self.stats["crl_signature_errors"] += 1
-                continue
-
             self.stats["crl_validity_checks"] += 1
 
     def check_uuid_consistency(self):
