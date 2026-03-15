@@ -22,7 +22,6 @@ This application provides a complete, self-hosted certificate authority (CA) man
 - **Client Certificate Authentication** — Deploy mTLS for secure service-to-service communication or employee device authentication.
 - **Email & Document Signing** — Issue S/MIME certificates for encrypted email and digitally-signed document workflows.
 - **IoT & Embedded Systems** — Manage device certificates for IoT deployments with automated renewal and revocation.
-- **Compliance & Regulated Environments** — Maintain full audit trails and control over certificate issuance for regulatory requirements (HIPAA, PCI-DSS, SOC 2).
 - **Development & Testing** — Create test certificates on-demand for development environments without managing external CA integrations.
 
 ## Quickstart with Docker Image
