@@ -7,8 +7,8 @@
 # PKI Management System
 
 <p align="center">
-  <img src="assets/app-1.png" alt="PKI Management System screenshot 1" height="320" />
-  <img src="assets/app-2.png" alt="PKI Management System screenshot 2" height="320" />
+  <img src="assets/app-1.png" alt="PKI Management System screenshot 1" height="260" />
+  <img src="assets/app-2.png" alt="PKI Management System screenshot 2" height="260" />
 </p>
 
 Web-based PKI management for root, intermediate, and end-entity certificates (server, client, email, OCSP responder) with policy enforcement, RBAC, CRL generation, audit logging, and multi-organization isolation.
