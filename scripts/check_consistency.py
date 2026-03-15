@@ -765,17 +765,19 @@ class ConsistencyChecker:
                 f"[{cert_id}] {cert_name}: EKU mismatch - PEM has {len(pem_ekus)}, DB has {len(db_ekus)}")
             self.stats["eku_mismatches"] += 1
 
-    def _load_crl(self, abs_path: Path):
-        """Load and cache CRL object (similar to _load_pem_cert)."""
-        cache_key = f"crl:{str(abs_path)}"
+    def _load_crl(self, crl_path: Path):
+        """Load and cache CRL object (similar to _load_pem_cert).
+        crl_path can be relative or absolute Path object."""
+        cache_key = f"crl:{str(crl_path)}"
         if cache_key in self._pem_cache:
             return self._pem_cache[cache_key]
         try:
-            crl_data = file_crypto.read_encrypted(abs_path)
+            crl_data = file_crypto.read_encrypted(crl_path)
             crl = x509.load_pem_x509_crl(crl_data)
             self._pem_cache[cache_key] = crl
             return crl
-        except Exception:
+        except Exception as e:
+            logger.debug(f"Failed to load CRL {crl_path}: {e}")
             return None
 
     def _extract_extensions(self, pem_cert):
@@ -1093,10 +1095,11 @@ class ConsistencyChecker:
                 self.stats["crl_validity_failures"] += 1
                 continue
 
-            # Load and validate CRL
-            crl = self._load_crl(crl_abs_path)
+            # Load and validate CRL (use relative path like existing code)
+            crl_path = Path(crl_path_rel)
+            crl = self._load_crl(crl_path)
             if not crl:
-                self.issue("error", f"[CRL {crl_id}] CRL unparseable: {crl_abs_path}")
+                self.issue("error", f"[CRL {crl_id}] CRL unparseable: {crl_path_rel}")
                 self.stats["crl_validity_failures"] += 1
                 continue
 
@@ -1234,9 +1237,8 @@ class ConsistencyChecker:
             # Get DB revoked certs for this issuer
             db_revoked = db.get_revoked_certs_for_issuer(issuer_id)
 
-            org_path = self._resolve_org_path(issuer["org_dir"])
-            crl_path = org_path / crl_path_rel
-            crl = self._load_crl(crl_path)
+            # Load CRL using relative path (like existing code)
+            crl = self._load_crl(Path(crl_path_rel))
             if not crl:
                 self.issue("error", f"[CRL {crl_id}] Cannot load CRL for revocation accuracy check")
                 self.stats["crl_revocation_mismatches"] += 1

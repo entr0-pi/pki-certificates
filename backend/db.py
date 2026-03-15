@@ -1445,6 +1445,7 @@ def list_all_certificates_for_backfill() -> List[Dict[str, Any]]:
                    c.not_before, c.not_after,
                    c.issuer_cert_id,
                    c.key_path, c.csr_path, c.pwd_path,
+                   c.cert_uuid,
                    c.subject_country, c.subject_state, c.subject_locality,
                    c.subject_organization, c.subject_org_unit, c.subject_common_name, c.subject_email,
                    c.organization_id, o.org_dir
