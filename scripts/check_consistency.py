@@ -1062,36 +1062,49 @@ class ConsistencyChecker:
 
     def check_crl_validity(self):
         """Verify all issuer CAs have valid CRL files with valid signatures."""
+        # Get all CRL records from database
+        crls = db.get_all_crls()
         certs = db.list_all_certificates_for_backfill()
-        ca_certs = [c for c in certs if c["cert_type"] in ("root", "intermediate")]
+        cert_by_id = {c["id"]: c for c in certs}
 
-        for ca_cert in ca_certs:
-            # Verify CRL path exists
-            if not ca_cert.get("crl_path"):
-                self.issue("error", f"[{ca_cert['id']}] {ca_cert['cert_name']}: missing crl_path")
+        for crl_record in crls:
+            crl_id = crl_record["id"]
+            issuer_id = crl_record["issuer_cert_id"]
+            crl_path_rel = crl_record.get("crl_path")
+
+            # Get issuer certificate
+            issuer = cert_by_id.get(issuer_id)
+            if not issuer:
+                self.issue("error", f"[CRL {crl_id}] Issuer cert {issuer_id} not found")
                 self.stats["crl_validity_failures"] += 1
                 continue
 
-            org_path = self._resolve_org_path(ca_cert["org_dir"])
-            crl_abs_path = org_path / ca_cert["crl_path"]
+            # Verify CRL file exists
+            if not crl_path_rel:
+                self.issue("error", f"[CRL {crl_id}] CRL path is not set in database")
+                self.stats["crl_validity_failures"] += 1
+                continue
+
+            org_path = self._resolve_org_path(issuer["org_dir"])
+            crl_abs_path = org_path / crl_path_rel
 
             if not crl_abs_path.exists():
-                self.issue("error", f"[{ca_cert['id']}] CRL file missing: {crl_abs_path}")
+                self.issue("error", f"[CRL {crl_id}] CRL file missing: {crl_abs_path}")
                 self.stats["crl_validity_failures"] += 1
                 continue
 
-            # Load CRL
+            # Load and validate CRL
             crl = self._load_crl(crl_abs_path)
             if not crl:
-                self.issue("error", f"[{ca_cert['id']}] CRL unparseable: {crl_abs_path}")
+                self.issue("error", f"[CRL {crl_id}] CRL unparseable: {crl_abs_path}")
                 self.stats["crl_validity_failures"] += 1
                 continue
 
             # Verify CRL issuer DN matches CA cert subject
-            ca_abs_path = org_path / ca_cert["cert_path"]
+            ca_abs_path = org_path / issuer["cert_path"]
             ca_pem = self._load_pem_cert(ca_abs_path)
             if not ca_pem or crl.issuer != ca_pem.subject:
-                self.issue("error", f"[{ca_cert['id']}] CRL issuer DN mismatch")
+                self.issue("error", f"[CRL {crl_id}] CRL issuer DN mismatch with certificate subject")
                 self.stats["crl_validity_failures"] += 1
                 continue
 
@@ -1103,7 +1116,7 @@ class ConsistencyChecker:
                     crl.signature_algorithm_oid
                 )
             except Exception as e:
-                self.issue("error", f"[{ca_cert['id']}] CRL signature verification failed: {e}")
+                self.issue("error", f"[CRL {crl_id}] CRL signature verification failed: {e}")
                 self.stats["crl_signature_errors"] += 1
                 continue
 
@@ -1200,24 +1213,32 @@ class ConsistencyChecker:
 
     def check_crl_revocation_accuracy(self):
         """Verify CRL contents match database revocation state."""
+        crls = db.get_all_crls()
         certs = db.list_all_certificates_for_backfill()
-        issuers = [c for c in certs if c["cert_type"] in ("root", "intermediate")]
+        cert_by_id = {c["id"]: c for c in certs}
 
-        for issuer in issuers:
-            issuer_id = issuer["id"]
+        for crl_record in crls:
+            crl_id = crl_record["id"]
+            issuer_id = crl_record["issuer_cert_id"]
+            crl_path_rel = crl_record.get("crl_path")
+
+            # Get issuer certificate
+            issuer = cert_by_id.get(issuer_id)
+            if not issuer:
+                continue
+
+            # Skip if CRL path not set
+            if not crl_path_rel:
+                continue
 
             # Get DB revoked certs for this issuer
             db_revoked = db.get_revoked_certs_for_issuer(issuer_id)
 
-            # Get CRL file
-            if not issuer.get("crl_path"):
-                continue
-
             org_path = self._resolve_org_path(issuer["org_dir"])
-            crl_path = org_path / issuer["crl_path"]
+            crl_path = org_path / crl_path_rel
             crl = self._load_crl(crl_path)
             if not crl:
-                self.issue("error", f"[{issuer_id}] Cannot load CRL for revocation accuracy check")
+                self.issue("error", f"[CRL {crl_id}] Cannot load CRL for revocation accuracy check")
                 self.stats["crl_revocation_mismatches"] += 1
                 continue
 
@@ -1227,14 +1248,14 @@ class ConsistencyChecker:
 
             # Check count matches
             if len(crl_serials) != len(db_serials):
-                self.issue("error", f"[{issuer_id}] CRL count mismatch: "
+                self.issue("error", f"[CRL {crl_id}] CRL count mismatch: "
                                    f"CRL has {len(crl_serials)}, DB has {len(db_serials)}")
                 self.stats["crl_count_mismatches"] += 1
 
             # Check all DB revoked appear in CRL
             for db_serial in db_serials:
                 if db_serial not in crl_serials:
-                    self.issue("error", f"[{issuer_id}] Serial {db_serial} in DB but not in CRL")
+                    self.issue("error", f"[CRL {crl_id}] Serial {db_serial} in DB but not in CRL")
                     self.stats["crl_revocation_mismatches"] += 1
 
     def check_certificate_chain_validation(self):
