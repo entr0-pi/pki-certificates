@@ -537,10 +537,20 @@ class ConsistencyChecker:
                     self.stats["artifact_path_mismatches"] += 1
 
     def check_private_key_matches_certificate(self, cert):
-        """Verify private key matches certificate public key when key can be loaded."""
+        """Verify private key matches certificate public key when key can be loaded.
+
+        Note: Skips root CAs since they use dual-password derivation (filesystem password
+        + user-provided password). The user password is only provided at runtime and not
+        available during consistency checks.
+        """
         cert_id = cert["id"]
         cert_name = cert["cert_name"]
+        cert_type = cert.get("cert_type", "").strip()
         org_dir = self._resolve_org_path(cert["org_dir"])
+
+        # Skip root CAs: they require user-provided password for key unlock
+        if cert_type == "root":
+            return
 
         key_rel = (cert.get("key_path") or "").strip()
         cert_rel = (cert.get("cert_path") or "").strip()
