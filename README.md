@@ -257,4 +257,4 @@ Install optional test dependencies from `tests/requirements-dev.txt` if your env
 - Back up both the database and encrypted certificate storage.
 - Review [docs/SECURITY.md](docs/SECURITY.md) before deploying outside local development.
 
-Last update: 2026 03 10 — Encryption upgraded to AES-256-GCM
+Last update: 2026 03 17 — Dual password for root certificates
