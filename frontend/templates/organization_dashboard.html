@@ -195,7 +195,7 @@
                                             <li><a href="/organizations/{{ organization.id }}/certificates/{{ cert.id }}/renew">Renew</a></li>
                                             {% endif %}
                                             {% if perms.get("can_revoke", False) and cert.status == "active" %}
-                                            <li><a href="#" onclick="openRevokeModal({{ cert.id }}, '{{ cert.cert_name }}', this.closest('tr').dataset.issuerType); return false;" class="text-error">Revoke</a></li>
+                                            <li><a href="#" onclick="openRevokeModal({{ cert.id }}, '{{ cert.cert_name }}', this.closest('tr').dataset.issuerType, this.closest('tr').dataset.type); return false;" class="text-error">Revoke</a></li>
                                             {% endif %}
                                         </ul>
                                     </div>
@@ -341,6 +341,20 @@
         <form method="dialog" class="modal-backdrop"><button>close</button></form>
     </dialog>
 
+    <dialog id="rootRevokeBlockModal" class="modal">
+        <div class="modal-box w-full max-w-md">
+            <h3 class="font-semibold text-lg mb-4">Cannot Revoke Root CA</h3>
+            <p class="text-sm text-base-content/80">
+                It is not possible to revoke a Root Certificate Authority directly.
+                To invalidate it, revoke all certificates issued under it.
+            </p>
+            <div class="modal-action">
+                <button class="btn" onclick="rootRevokeBlockModal.close()">OK</button>
+            </div>
+        </div>
+        <form method="dialog" class="modal-backdrop"><button>close</button></form>
+    </dialog>
+
     <dialog id="consistencyModal" class="modal">
         <div class="modal-box max-w-2xl max-h-96 overflow-y-auto">
             <h3 class="font-semibold text-lg mb-3">Consistency Check</h3>
@@ -438,7 +452,11 @@
 
         const revokeModal = document.getElementById("revokeModal");
         const revokeForm = document.getElementById("revokeForm");
-        function openRevokeModal(certId, certName, issuerType) {
+        function openRevokeModal(certId, certName, issuerType, certType) {
+            if (certType === "root") {
+                document.getElementById("rootRevokeBlockModal").showModal();
+                return;
+            }
             document.getElementById("certNameDisplay").value = certName;
             revokeForm.action = `/organizations/{{ organization.id }}/certificates/${certId}/revoke`;
 
