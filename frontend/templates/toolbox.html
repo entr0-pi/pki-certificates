@@ -8,6 +8,12 @@
 </head>
 <body class="bg-base-200 min-h-screen p-6">
     <div class="container mx-auto max-w-6xl">
+        {% if restore == 'ok' %}
+        <div class="alert alert-success mb-4">Backup restored successfully.</div>
+        {% elif restore == 'error' %}
+        <div class="alert alert-error mb-4">Restore failed: {{ restore_detail }}</div>
+        {% endif %}
+
         <div class="card bg-base-100 shadow-xl mb-6">
             <div class="card-body">
                 <a href="/" class="btn btn-ghost btn-sm w-fit mb-2">&lt; Back</a>
@@ -53,6 +59,26 @@
                         Export Full Backup
                     </a>
                 </div>
+            </div>
+        </div>
+
+        <div class="card bg-base-100 shadow-xl mt-6">
+            <div class="card-body">
+                <h2 class="card-title">Restore from Backup</h2>
+                <p class="text-base-content/70">
+                    Upload a previously exported ZIP backup to restore the database and all
+                    encrypted certificate files. The server performs an atomic swap — safe to
+                    run while the application is live. <strong>This operation replaces all live
+                    data and cannot be undone.</strong>
+                </p>
+                <form method="post" action="/admin/restore/database"
+                      enctype="multipart/form-data" class="flex items-center gap-3 mt-2">
+                    <input type="file" name="backup_file" accept=".zip"
+                           class="file-input file-input-bordered file-input-sm" required />
+                    <button type="submit" class="btn btn-warning btn-sm">
+                        Restore Backup
+                    </button>
+                </form>
             </div>
         </div>
     </div>

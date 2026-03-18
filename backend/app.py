@@ -3,7 +3,7 @@ FastAPI application for PKI Management System
 Provides web interface for certificate management operations
 """
 
-from fastapi import FastAPI, Request, Form, Query, HTTPException
+from fastapi import FastAPI, Request, Form, Query, HTTPException, UploadFile, File
 from fastapi.responses import HTMLResponse, Response, RedirectResponse, JSONResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
@@ -19,6 +19,7 @@ import uuid
 import re
 import sqlite3
 import zipfile
+import shutil
 from datetime import date
 from cryptography import x509
 from cryptography.x509.oid import NameOID
@@ -85,6 +86,11 @@ VALID_REVOCATION_REASONS = frozenset({
 
 # Default subprocess timeout in seconds (can be overridden by environment variable)
 SUBPROCESS_TIMEOUT = int(os.environ.get("PKI_SUBPROCESS_TIMEOUT_SECONDS", "120"))
+
+# Restore operation limits
+_RESTORE_MAX_UPLOAD_BYTES = 5 * 1024 ** 3   # 5 GB hard cap on upload
+_RESTORE_MAX_UNCOMPRESSED_BYTES = 10 * 1024 ** 3  # 10 GB uncompressed cap
+_RESTORE_MAX_ZIP_ENTRIES = 50_000
 
 
 @asynccontextmanager
@@ -801,9 +807,9 @@ async def landing_page(request: Request):
 
 
 @app.get("/toolbox", response_class=HTMLResponse, dependencies=[require_roles_config()])
-async def toolbox_page(request: Request):
+async def toolbox_page(request: Request, restore: str | None = Query(default=None), detail: str | None = Query(default=None)):
     """Toolbox landing page for future utility tools."""
-    return templates.TemplateResponse("toolbox.html", {"request": request})
+    return templates.TemplateResponse("toolbox.html", {"request": request, "restore": restore, "restore_detail": detail})
 
 
 @app.post("/create-organization", dependencies=[require_roles_config()])
@@ -1025,6 +1031,378 @@ async def download_full_backup(request: Request):
         media_type="application/zip",
         headers={"Content-Disposition": f'attachment; filename="{zip_filename}"'},
     )
+
+
+@app.post("/admin/restore/database", dependencies=[require_roles_config()])
+async def restore_full_backup(request: Request, backup_file: UploadFile = File(...)):
+    """
+    Restore a full backup ZIP containing database and certificate files.
+    Performs atomic swaps of both database and data directory.
+    Admin only.
+    """
+    upload_tmp = None
+    restore_db_tmp = None
+    data_restore_tmp = None
+
+    try:
+        db_path = get_db_path()
+        data_dir = get_data_dir()
+
+        # Phase 1: Receive upload
+        upload_tmp = tempfile.NamedTemporaryFile(suffix=".zip", delete=False)
+        upload_tmp_path = upload_tmp.name
+        bytes_received = 0
+
+        try:
+            while True:
+                chunk = await backup_file.read(1024 * 1024)  # 1 MB chunks
+                if not chunk:
+                    break
+                bytes_received += len(chunk)
+                if bytes_received > _RESTORE_MAX_UPLOAD_BYTES:
+                    try:
+                        os.unlink(upload_tmp_path)
+                    except OSError:
+                        pass
+                    error_msg = f"Upload exceeds {_RESTORE_MAX_UPLOAD_BYTES / (1024**3):.1f} GB limit"
+                    return RedirectResponse(
+                        f"/toolbox?restore=error&detail={error_msg.replace(' ', '+')}",
+                        status_code=303
+                    )
+                upload_tmp.write(chunk)
+            upload_tmp.close()
+        except Exception as e:
+            try:
+                os.unlink(upload_tmp_path)
+            except OSError:
+                pass
+            logger.error(f"Failed to receive backup upload: {e}")
+            return RedirectResponse(
+                f"/toolbox?restore=error&detail=Upload+failed",
+                status_code=303
+            )
+
+        # Phase 2: Validate ZIP structure
+        try:
+            with zipfile.ZipFile(upload_tmp_path, "r") as zf:
+                total_uncompressed = 0
+                has_pki_db = False
+
+                # Check entry count
+                if len(zf.infolist()) > _RESTORE_MAX_ZIP_ENTRIES:
+                    try:
+                        os.unlink(upload_tmp_path)
+                    except OSError:
+                        pass
+                    error_msg = f"ZIP contains too many entries (>{_RESTORE_MAX_ZIP_ENTRIES})"
+                    return RedirectResponse(
+                        f"/toolbox?restore=error&detail={error_msg.replace(' ', '+').replace('>', '%3E')}",
+                        status_code=303
+                    )
+
+                # Validate each entry
+                for info in zf.infolist():
+                    # Path traversal guard
+                    if info.filename.startswith('/') or '..' in Path(info.filename).parts:
+                        try:
+                            os.unlink(upload_tmp_path)
+                        except OSError:
+                            pass
+                        return RedirectResponse(
+                            "/toolbox?restore=error&detail=Invalid+path+in+ZIP",
+                            status_code=303
+                        )
+
+                    # Check first path component
+                    parts = Path(info.filename).parts
+                    if parts and parts[0] not in ('pki.db', 'data'):
+                        try:
+                            os.unlink(upload_tmp_path)
+                        except OSError:
+                            pass
+                        return RedirectResponse(
+                            "/toolbox?restore=error&detail=Unexpected+files+in+ZIP",
+                            status_code=303
+                        )
+
+                    # Track uncompressed size
+                    total_uncompressed += info.file_size
+
+                    # Track pki.db
+                    if info.filename == 'pki.db':
+                        has_pki_db = True
+
+                # Check uncompressed size limit
+                if total_uncompressed > _RESTORE_MAX_UNCOMPRESSED_BYTES:
+                    try:
+                        os.unlink(upload_tmp_path)
+                    except OSError:
+                        pass
+                    error_msg = f"Uncompressed size exceeds {_RESTORE_MAX_UNCOMPRESSED_BYTES / (1024**3):.1f} GB"
+                    return RedirectResponse(
+                        f"/toolbox?restore=error&detail={error_msg.replace(' ', '+')}",
+                        status_code=303
+                    )
+
+                # Check for pki.db
+                if not has_pki_db:
+                    try:
+                        os.unlink(upload_tmp_path)
+                    except OSError:
+                        pass
+                    return RedirectResponse(
+                        "/toolbox?restore=error&detail=Missing+pki.db+in+ZIP",
+                        status_code=303
+                    )
+        except zipfile.BadZipFile:
+            try:
+                os.unlink(upload_tmp_path)
+            except OSError:
+                pass
+            return RedirectResponse(
+                "/toolbox?restore=error&detail=Invalid+ZIP+file",
+                status_code=303
+            )
+        except Exception as e:
+            try:
+                os.unlink(upload_tmp_path)
+            except OSError:
+                pass
+            logger.error(f"ZIP validation failed: {e}")
+            return RedirectResponse(
+                "/toolbox?restore=error&detail=ZIP+validation+failed",
+                status_code=303
+            )
+
+        # Phase 3: Validate pki.db
+        restore_db_tmp = tempfile.NamedTemporaryFile(suffix=".db", delete=False)
+        restore_db_tmp_path = restore_db_tmp.name
+        restore_db_tmp.close()
+
+        try:
+            with zipfile.ZipFile(upload_tmp_path, "r") as zf:
+                zf.extract("pki.db", path=Path(restore_db_tmp_path).parent)
+                extracted_db = Path(restore_db_tmp_path).parent / "pki.db"
+                extracted_db.replace(Path(restore_db_tmp_path))
+        except Exception as e:
+            try:
+                os.unlink(restore_db_tmp_path)
+            except OSError:
+                pass
+            try:
+                os.unlink(upload_tmp_path)
+            except OSError:
+                pass
+            logger.error(f"Failed to extract pki.db: {e}")
+            return RedirectResponse(
+                "/toolbox?restore=error&detail=Failed+to+extract+database",
+                status_code=303
+            )
+
+        # Validate database integrity and schema version
+        try:
+            conn = sqlite3.connect(f"file:{restore_db_tmp_path}?mode=ro&uri=true")
+            try:
+                cursor = conn.cursor()
+
+                # Check integrity
+                cursor.execute("PRAGMA integrity_check")
+                result = cursor.fetchone()
+                if not result or result[0] != 'ok':
+                    try:
+                        os.unlink(restore_db_tmp_path)
+                    except OSError:
+                        pass
+                    try:
+                        os.unlink(upload_tmp_path)
+                    except OSError:
+                        pass
+                    return RedirectResponse(
+                        "/toolbox?restore=error&detail=Database+integrity+check+failed",
+                        status_code=303
+                    )
+
+                # Check schema version
+                cursor.execute("SELECT version FROM schema_version ORDER BY applied_at DESC LIMIT 1")
+                version_row = cursor.fetchone()
+                if not version_row or version_row[0] != db.SCHEMA_VERSION:
+                    try:
+                        os.unlink(restore_db_tmp_path)
+                    except OSError:
+                        pass
+                    try:
+                        os.unlink(upload_tmp_path)
+                    except OSError:
+                        pass
+                    return RedirectResponse(
+                        "/toolbox?restore=error&detail=Database+schema+version+mismatch",
+                        status_code=303
+                    )
+            finally:
+                conn.close()
+        except Exception as e:
+            try:
+                os.unlink(restore_db_tmp_path)
+            except OSError:
+                pass
+            try:
+                os.unlink(upload_tmp_path)
+            except OSError:
+                pass
+            logger.error(f"Database validation failed: {e}")
+            return RedirectResponse(
+                "/toolbox?restore=error&detail=Database+validation+failed",
+                status_code=303
+            )
+
+        # Phase 4: Extract data/ to staging
+        data_restore_tmp = data_dir.parent / "data_restore_tmp"
+        if data_restore_tmp.exists():
+            try:
+                shutil.rmtree(data_restore_tmp)
+            except Exception as e:
+                logger.warning(f"Failed to clean up stale data_restore_tmp: {e}")
+
+        try:
+            data_restore_tmp.mkdir(parents=True, exist_ok=True)
+            with zipfile.ZipFile(upload_tmp_path, "r") as zf:
+                for info in zf.infolist():
+                    if info.filename.startswith('data/'):
+                        # Strip 'data/' prefix
+                        rel_path = info.filename[5:]
+                        if rel_path:  # Skip the 'data/' directory entry itself
+                            target = data_restore_tmp / rel_path
+                            if info.filename.endswith('/'):
+                                target.mkdir(parents=True, exist_ok=True)
+                            else:
+                                target.parent.mkdir(parents=True, exist_ok=True)
+                                with zf.open(info) as src, open(target, 'wb') as dst:
+                                    shutil.copyfileobj(src, dst)
+        except Exception as e:
+            try:
+                shutil.rmtree(data_restore_tmp)
+            except OSError:
+                pass
+            try:
+                os.unlink(restore_db_tmp_path)
+            except OSError:
+                pass
+            try:
+                os.unlink(upload_tmp_path)
+            except OSError:
+                pass
+            logger.error(f"Failed to extract data directory: {e}")
+            return RedirectResponse(
+                "/toolbox?restore=error&detail=Failed+to+extract+data",
+                status_code=303
+            )
+
+        # Phase 5: Atomic DB swap (point of no return begins)
+        db_old = db_path.with_suffix(".restore_old")
+        try:
+            db.engine.dispose()
+            db_path.replace(db_old)
+            Path(restore_db_tmp_path).replace(db_path)
+        except Exception as e:
+            # Attempt recovery
+            try:
+                if db_old.exists() and not db_path.exists():
+                    db_old.replace(db_path)
+                db.engine.dispose()
+            except Exception as recovery_e:
+                logger.error(f"Failed to recover after DB swap failure: {recovery_e}")
+
+            # Clean up staging
+            try:
+                shutil.rmtree(data_restore_tmp)
+            except OSError:
+                pass
+            try:
+                os.unlink(upload_tmp_path)
+            except OSError:
+                pass
+
+            logger.error(f"Database swap failed: {e}")
+            return RedirectResponse(
+                "/toolbox?restore=error&detail=Database+swap+failed",
+                status_code=303
+            )
+
+        # Phase 6: Atomic data/ swap
+        data_old = data_dir.parent / "data_restore_old"
+        try:
+            if data_dir.exists():
+                os.rename(data_dir, data_old)
+            else:
+                data_old = None
+
+            os.rename(data_restore_tmp, data_dir)
+        except Exception as e:
+            # Attempt recovery
+            try:
+                if data_old and not data_dir.exists():
+                    os.rename(data_old, data_dir)
+            except Exception as recovery_e:
+                logger.error(f"Failed to recover after data swap failure: {recovery_e}")
+
+            try:
+                os.unlink(upload_tmp_path)
+            except OSError:
+                pass
+
+            # DB is already swapped (consistent)
+            logger.error(f"Data swap failed: {e}")
+            return RedirectResponse(
+                "/toolbox?restore=error&detail=Data+swap+failed",
+                status_code=303
+            )
+
+        # Phase 7: Cleanup
+        db_old_exists = db_old.exists() if 'db_old' in locals() else False
+        if db_old_exists:
+            try:
+                os.unlink(db_old)
+            except OSError as e:
+                logger.warning(f"Failed to clean up old database file: {e}")
+
+        data_old_exists = data_old is not None and data_old.exists()
+        if data_old_exists:
+            try:
+                shutil.rmtree(data_old)
+            except OSError as e:
+                logger.warning(f"Failed to clean up old data directory: {e}")
+
+        try:
+            os.unlink(upload_tmp_path)
+        except OSError as e:
+            logger.warning(f"Failed to clean up upload temp file: {e}")
+
+        # Phase 8: Log and redirect
+        user_name = _get_request_user(request)
+        logger.info(f"Full backup restored by user '{user_name}'")
+
+        return RedirectResponse("/toolbox?restore=ok", status_code=303)
+
+    except Exception as e:
+        # Unexpected error - best effort cleanup
+        for tmp_path in [upload_tmp_path if upload_tmp else None, restore_db_tmp_path if restore_db_tmp else None]:
+            if tmp_path:
+                try:
+                    os.unlink(tmp_path)
+                except OSError:
+                    pass
+
+        if data_restore_tmp and data_restore_tmp.exists():
+            try:
+                shutil.rmtree(data_restore_tmp)
+            except OSError:
+                pass
+
+        logger.error(f"Unexpected error during restore: {e}", exc_info=True)
+        return RedirectResponse(
+            "/toolbox?restore=error&detail=Unexpected+error",
+            status_code=303
+        )
 
 
 @app.get("/organizations", dependencies=[require_roles_config()])

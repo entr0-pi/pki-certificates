@@ -4,6 +4,7 @@
   "POST /create-organization": ["admin"],
   "GET /health": ["admin", "manager"],
   "GET /admin/backup/database": ["admin"],
+  "POST /admin/restore/database": ["admin"],
   "GET /organizations": ["admin", "manager", "user"],
   "GET /organizations/{org_id}/manage": ["admin", "manager", "user"],
   "GET /organizations/{org_id}/create-certificate": ["admin", "manager"],
