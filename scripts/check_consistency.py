@@ -86,7 +86,6 @@ class ConsistencyChecker:
             # NEW: CRL and data integrity checks
             "crl_validity_checks": 0,
             "crl_validity_failures": 0,
-            "crl_signature_errors": 0,
             "uuid_missing": 0,
             "uuid_invalid_format": 0,
             "uuid_duplicates": 0,
@@ -97,11 +96,9 @@ class ConsistencyChecker:
             "crl_revocation_mismatches": 0,
             "crl_count_mismatches": 0,
             "crl_reason_mismatches": 0,
-            "encryption_validation_failures": 0,
             "decryption_errors": 0,
             "password_file_errors": 0,
             "field_completeness_errors": 0,
-            "policy_constraint_violations": 0,
             "dual_password_missing": 0,
             "dual_password_format_errors": 0,
             "dual_password_decode_errors": 0,
@@ -1486,7 +1483,6 @@ class ConsistencyChecker:
         # NEW: Data integrity checks
         logger.info(f"  CRL validity checks:     {self.stats['crl_validity_checks']}")
         logger.info(f"  CRL validity failures:   {self.stats['crl_validity_failures']}")
-        logger.info(f"  CRL signature errors:    {self.stats['crl_signature_errors']}")
         logger.info(f"  UUID missing:            {self.stats['uuid_missing']}")
         logger.info(f"  UUID invalid format:     {self.stats['uuid_invalid_format']}")
         logger.info(f"  UUID duplicates:         {self.stats['uuid_duplicates']}")
@@ -1500,7 +1496,6 @@ class ConsistencyChecker:
         logger.info(f"  Decryption errors:       {self.stats['decryption_errors']}")
         logger.info(f"  Password file errors:    {self.stats['password_file_errors']}")
         logger.info(f"  Field completeness errors: {self.stats['field_completeness_errors']}")
-        logger.info(f"  Policy constraint violations: {self.stats['policy_constraint_violations']}")
         logger.info(f"  Dual password missing:   {self.stats['dual_password_missing']}")
         logger.info(f"  Dual password format errors: {self.stats['dual_password_format_errors']}")
         logger.info(f"  Dual password decode errors: {self.stats['dual_password_decode_errors']}")
@@ -1533,7 +1528,6 @@ class ConsistencyChecker:
             self.stats["crl_mismatches"] +
             # NEW: Data integrity metrics
             self.stats["crl_validity_failures"] +
-            self.stats["crl_signature_errors"] +
             self.stats["uuid_missing"] +
             self.stats["uuid_invalid_format"] +
             self.stats["uuid_duplicates"] +
@@ -1547,7 +1541,6 @@ class ConsistencyChecker:
             self.stats["decryption_errors"] +
             self.stats["password_file_errors"] +
             self.stats["field_completeness_errors"] +
-            self.stats["policy_constraint_violations"] +
             self.stats["dual_password_missing"] +
             self.stats["dual_password_format_errors"] +
             self.stats["dual_password_decode_errors"]

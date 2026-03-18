@@ -7,13 +7,11 @@ import sqlite3
 import uuid
 from pathlib import Path
 from typing import Optional, List, Dict, Any
-from datetime import datetime
+from datetime import datetime, timezone, timedelta
 from contextlib import contextmanager
 import logging
-from datetime import timezone
 
 from sqlalchemy import create_engine, text, event
-from sqlalchemy.exc import IntegrityError as SAIntegrityError
 
 from cryptography import x509
 from cryptography.hazmat.primitives.asymmetric import rsa, ec
@@ -26,8 +24,6 @@ else:
     from path_config import get_project_root, get_db_path, get_schema_path
 
 logger = logging.getLogger(__name__)
-
-PROJECT_ROOT = get_project_root()
 
 # Database file path
 DB_PATH = get_db_path()
@@ -1183,7 +1179,6 @@ def get_expiring_certificates(days_ahead: int = 90, critical_days: int = 30, war
         expiration_boundary = now.strftime("%Y-%m-%d %H:%M:%S")
 
         # Calculate days ahead timestamp (naive UTC format for SQLite comparison)
-        from datetime import timedelta
         days_ahead_date = now + timedelta(days=days_ahead)
         days_ahead_iso = days_ahead_date.strftime("%Y-%m-%d %H:%M:%S")
 

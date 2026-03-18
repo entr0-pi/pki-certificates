@@ -300,14 +300,6 @@ def _check_role(request: Request, allowed_roles: tuple[str, ...]) -> None:
         raise HTTPException(status_code=403, detail="Insufficient permissions")
 
 
-def require_roles(*roles: str):
-    """FastAPI Depends-compatible role guard."""
-    from fastapi import Depends
-    async def _role_check(request: Request):
-        _check_role(request, roles)
-    return Depends(_role_check)
-
-
 def require_roles_config():
     """FastAPI Depends-compatible role guard driven by backend/config/rbac.json.
 

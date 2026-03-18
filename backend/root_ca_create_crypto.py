@@ -17,26 +17,6 @@ import file_crypto
 import secrets
 
 
-def ensure_passphrase_file(pwd_path: Path) -> bytes:
-    """
-    Keep your old behavior:
-    - If PKI_PASS is set: write it once (if missing)
-    - else: reuse folder.ensure_password_file() random password behavior
-    Files are encrypted at rest via file_crypto.
-    """
-    if not pwd_path.exists():
-        env = os.environ.get("PKI_PASS")
-        if env:
-            pwd_path.parent.mkdir(parents=True, exist_ok=True)
-            file_crypto.write_encrypted(pwd_path, (env.strip() + "\n").encode())
-            if os.name == "posix":
-                pwd_path.chmod(0o600)
-        else:
-            ensure_password_file(pwd_path)
-    return file_crypto.read_encrypted(pwd_path).strip()
-
-
-
 
 
 def main() -> None:

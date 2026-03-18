@@ -17,26 +17,6 @@ def ensure_dir(p: Path) -> None:
     p.mkdir(parents=True, exist_ok=True)
 
 
-def touch_empty(path: Path) -> None:
-    """
-    Create an empty file if it doesn't exist.
-    Does not overwrite existing content.
-    """
-    if not path.exists():
-        path.parent.mkdir(parents=True, exist_ok=True)
-        path.write_text("", encoding="utf-8")
-
-
-def write_if_missing(path: Path, content: str) -> None:
-    """
-    Create a file with `content` if it doesn't exist.
-    Does not overwrite existing content.
-    """
-    if not path.exists():
-        path.parent.mkdir(parents=True, exist_ok=True)
-        path.write_text(content, encoding="utf-8")
-
-
 def set_private_perms(private_dir: Path) -> None:
     """
     Best-effort permissions hardening:

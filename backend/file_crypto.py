@@ -11,12 +11,9 @@ import os
 import base64
 from pathlib import Path
 
-from dotenv import load_dotenv
 from cryptography.hazmat.primitives.kdf.pbkdf2 import PBKDF2HMAC
 from cryptography.hazmat.primitives import hashes
 from cryptography.hazmat.primitives.ciphers.aead import AESGCM
-
-load_dotenv()
 
 _ITERATIONS   = 480_000
 _NONCE_LENGTH = 12      # bytes (GCM standard)
