@@ -135,7 +135,7 @@
                                     {% if perms.get("can_view_popup", True) %}
                                     <a href="/organizations/{{ organization.id }}/certificates/{{ cert.id }}/popup"
                                        class="link link-primary"
-                                       onclick="window.open(this.href, 'certPopup{{ cert.id }}', 'width=1200,height=900,scrollbars=yes,resizable=yes'); return false;">
+                                       data-popup-id="{{ cert.id }}">
                                         {{ cert.cert_name }}
                                     </a>
                                     {% else %}
@@ -177,12 +177,12 @@
                                         <div tabindex="0" role="button" class="btn btn-xs btn-outline">Actions</div>
                                         <ul tabindex="0" class="dropdown-content menu bg-base-100 rounded-box z-[1] w-52 p-2 shadow border border-base-300">
                                             {% if perms.get("can_view_popup", True) %}
-                                            <li><a href="/organizations/{{ organization.id }}/certificates/{{ cert.id }}/popup" onclick="window.open(this.href, 'certPopup{{ cert.id }}', 'width=1200,height=900,scrollbars=yes,resizable=yes'); return false;">View Details</a></li>
+                                            <li><a href="/organizations/{{ organization.id }}/certificates/{{ cert.id }}/popup" data-popup-id="{{ cert.id }}">View Details</a></li>
                                             {% endif %}
                                             {% if perms.get("can_download_cert", False) %}
                                             <li><a href="/organizations/{{ organization.id }}/certificates/{{ cert.id }}/download?format=pem">Download PEM</a></li>
                                             {% if cert.cert_type in ["client", "email"] %}
-                                            <li><a href="#" onclick="showP12Password({{ organization.id }}, {{ cert.id }}); return false;">Download PKCS12</a></li>
+                                            <li><a href="#" data-org-id="{{ organization.id }}" data-cert-id="{{ cert.id }}">Download PKCS12</a></li>
                                             {% endif %}
                                             {% endif %}
                                             {% if perms.get("can_download_cert", False) %}
@@ -195,7 +195,7 @@
                                             <li><a href="/organizations/{{ organization.id }}/certificates/{{ cert.id }}/renew">Renew</a></li>
                                             {% endif %}
                                             {% if perms.get("can_revoke", False) and cert.status == "active" %}
-                                            <li><a href="#" onclick="openRevokeModal({{ cert.id }}, '{{ cert.cert_name }}', this.closest('tr').dataset.issuerType, this.closest('tr').dataset.type); return false;" class="text-error">Revoke</a></li>
+                                            <li><a href="#" data-cert-id="{{ cert.id }}" data-cert-name="{{ cert.cert_name | e }}" class="text-error">Revoke</a></li>
                                             {% endif %}
                                         </ul>
                                     </div>
@@ -235,7 +235,7 @@
 
         <div class="card bg-base-100 shadow-xl mt-6">
             <div class="card-body p-6">
-                <button class="flex items-center justify-between w-full text-left hover:opacity-75 transition-opacity" onclick="toggleAuditLogs()">
+                <button id="toggleAuditBtn" class="flex items-center justify-between w-full text-left hover:opacity-75 transition-opacity">
                     <h2 class="text-lg font-semibold">Recent Operations</h2>
                     <svg id="auditLogsArrow" xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 transition-transform duration-200" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7" />
@@ -268,7 +268,7 @@
 
         {% if perms.get("can_run_consistency", False) %}
         <div class="text-center mt-6">
-            <button type="button" class="btn btn-outline" onclick="runConsistencyCheck()">
+            <button type="button" id="consistencyCheckBtn" class="btn btn-outline">
                 Run Consistency Check
             </button>
         </div>
@@ -284,13 +284,13 @@
             </p>
             <div class="flex items-center gap-2 bg-base-200 rounded-box p-3 mb-4">
                 <code id="p12Password" class="flex-1 font-mono text-sm break-all"></code>
-                <button type="button" class="btn btn-sm btn-ghost" onclick="copyP12Password()">
+                <button type="button" id="p12CopyBtn" class="btn btn-sm btn-ghost">
                     Copy
                 </button>
             </div>
             <div id="p12CopyFeedback" class="text-xs text-success mb-3 hidden">Copied to clipboard!</div>
             <div class="modal-action">
-                <button type="button" class="btn btn-ghost" onclick="p12PasswordModal.close()">Cancel</button>
+                <button type="button" id="p12CloseBtn" class="btn btn-ghost">Cancel</button>
                 <a id="p12DownloadLink" href="#" class="btn btn-secondary">Download P12</a>
             </div>
         </div>
@@ -333,7 +333,7 @@
                   </label>
                 </div>
                 <div class="modal-action">
-                    <button type="button" class="btn btn-ghost" onclick="revokeModal.close()">Cancel</button>
+                    <button type="button" id="revokeCloseBtn" class="btn btn-ghost">Cancel</button>
                     <button type="submit" class="btn btn-error">Revoke</button>
                 </div>
             </form>
@@ -349,7 +349,7 @@
                 To invalidate it, revoke all certificates issued under it.
             </p>
             <div class="modal-action">
-                <button class="btn" onclick="rootRevokeBlockModal.close()">OK</button>
+                <button id="rootRevokeCloseBtn" class="btn">OK</button>
             </div>
         </div>
         <form method="dialog" class="modal-backdrop"><button>close</button></form>
@@ -359,181 +359,20 @@
         <div class="modal-box max-w-2xl max-h-96 overflow-y-auto">
             <h3 class="font-semibold text-lg mb-3">Consistency Check</h3>
             <div id="consistencyBody" class="text-sm">Running...</div>
-            <div class="modal-action"><button class="btn" onclick="consistencyModal.close()">Close</button></div>
+            <div class="modal-action"><button id="consistencyCloseBtn" class="btn">Close</button></div>
         </div>
         <form method="dialog" class="modal-backdrop"><button>close</button></form>
     </dialog>
 
-    <script>
-        // Toggle Recent Operations visibility
-        function toggleAuditLogs() {
-            const content = document.getElementById("auditLogsContent");
-            content.classList.toggle("hidden");
-        }
-
-        // CRL Distribution - fetch available CRLs
-        async function loadCrlList() {
-            const loading = document.getElementById("crlLoading");
-            const content = document.getElementById("crlContent");
-            const error = document.getElementById("crlError");
-            const issuersList = document.getElementById("crlIssuersList");
-
-            try {
-                const response = await fetch(`/api/organizations/{{ organization.id }}/crls`);
-                const crls = await response.json();
-
-                if (!Array.isArray(crls) || crls.length === 0) {
-                    loading.classList.add("hidden");
-                    error.classList.remove("hidden");
-                    return;
-                }
-
-                // Filter to issuers with CRLs
-                const availableCrls = crls.filter(c => c.has_crl);
-                if (availableCrls.length === 0) {
-                    loading.classList.add("hidden");
-                    error.classList.remove("hidden");
-                    return;
-                }
-
-                // Render issuers with landing-page style cards
-                issuersList.innerHTML = availableCrls.map(crl => {
-                    const lastUpdated = crl.last_updated ? new Date(crl.last_updated).toLocaleString() : "Never";
-                    const bundleBtn = `<a href="/organizations/{{ organization.id }}/crl/bundle" class="btn btn-ghost btn-xs" title="Download CRL Bundle (All CRLs)" download>
-                             <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.658 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
-                             </svg>
-                           </a>`;
-                    return `
-                        <div class="card bg-base-200 shadow transition-shadow hover:shadow-lg duration-200">
-                            <div class="card-body p-3 gap-2">
-                                <div class="flex items-start justify-between gap-2">
-                                    <h3 class="font-semibold text-sm flex-1">${crl.issuer_name}</h3>
-                                    <div class="badge badge-outline badge-xs">${crl.cert_type}</div>
-                                </div>
-                                <div class="text-xs text-base-content/60">
-                                    Updated: ${lastUpdated}
-                                </div>
-                                <div class="text-xs">
-                                    ${crl.revoked_count > 0 ? `<span class="text-error font-semibold">${crl.revoked_count}</span> <span class="text-base-content/60">revoked</span>` : '<span class="text-base-content/50">No revocations</span>'}
-                                </div>
-                                <div class="flex items-center justify-between gap-2">
-                                    <div class="flex gap-1">
-                                        ${bundleBtn}
-                                        <a href="${crl.download_url}" class="btn btn-ghost btn-xs" title="Download CRL" download>
-                                            <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
-                                            </svg>
-                                        </a>
-                                    </div>
-                                    ${crl.issuer_status === 'revoked' ? '<div class="badge badge-error badge-sm">Revoked</div>' : ''}
-                                </div>
-                            </div>
-                        </div>
-                    `;
-                }).join("");
-
-                loading.classList.add("hidden");
-                content.classList.remove("hidden");
-            } catch (err) {
-                console.error("Failed to load CRL list:", err);
-                loading.classList.add("hidden");
-                error.classList.remove("hidden");
-            }
-        }
-
-        // Load CRL list on page load
-        document.addEventListener("DOMContentLoaded", loadCrlList);
-
-        // Expiration thresholds from policy
-        const EXPIRY_CRITICAL_DAYS = {{ critical_days }};
-        const EXPIRY_WARNING_DAYS = {{ warning_days }};
-        const EXPIRY_ALERT_WINDOW_DAYS = {{ expiration_days }};
-
-        const revokeModal = document.getElementById("revokeModal");
-        const revokeForm = document.getElementById("revokeForm");
-        function openRevokeModal(certId, certName, issuerType, certType) {
-            if (certType === "root") {
-                document.getElementById("rootRevokeBlockModal").showModal();
-                return;
-            }
-            document.getElementById("certNameDisplay").value = certName;
-            revokeForm.action = `/organizations/{{ organization.id }}/certificates/${certId}/revoke`;
-
-            const rootField = document.getElementById("rootPasswordField");
-            const rootInput = document.getElementById("rootPasswordInput");
-            rootInput.value = "";
-            if (issuerType === "root") {
-                rootField.classList.remove("hidden");
-                rootInput.required = true;
-            } else {
-                rootField.classList.add("hidden");
-                rootInput.required = false;
-            }
-            revokeModal.showModal();
-        }
-
-        const rows = Array.from(document.querySelectorAll(".cert-row"));
-        const q = document.getElementById("certSearch");
-        const type = document.getElementById("typeFilter");
-        const status = document.getElementById("statusFilter");
-        const expiry = document.getElementById("expiryFilter");
-        const noResults = document.getElementById("noResultsMessage");
-
-        function expiryBucket(notAfter) {
-            if (!notAfter) return "";
-            const end = new Date(notAfter);
-            if (Number.isNaN(end.getTime())) return "";
-            const days = Math.ceil((end - new Date()) / 86400000);
-            if (days <= 0) return "expired";
-            if (days <= EXPIRY_CRITICAL_DAYS) return "critical";
-            if (days <= EXPIRY_WARNING_DAYS) return "warning";
-            if (days <= EXPIRY_ALERT_WINDOW_DAYS) return "info";
-            return "healthy";
-        }
-
-        function renderExpiryBadges() {
-            rows.forEach((row) => {
-                const bucket = expiryBucket(row.dataset.notAfter || "");
-                const badge = row.querySelector(".expiry-badge");
-                if (!badge) return;
-                if (!bucket) {
-                    badge.textContent = "-";
-                    badge.className = "expiry-badge badge badge-sm badge-ghost";
-                    return;
-                }
-                if (bucket === "expired") badge.className = "expiry-badge badge badge-sm badge-error";
-                else if (bucket === "critical") badge.className = "expiry-badge badge badge-sm badge-error";
-                else if (bucket === "warning") badge.className = "expiry-badge badge badge-sm badge-warning";
-                else if (bucket === "info") badge.className = "expiry-badge badge badge-sm badge-info";
-                else badge.className = "expiry-badge badge badge-sm badge-success";
-                badge.textContent = bucket;
-            });
-        }
-
-        function applyFilters() {
-            const query = (q?.value || "").trim().toLowerCase();
-            const t = type?.value || "";
-            const s = status?.value || "";
-            const e = expiry?.value || "";
-            let visible = 0;
-            rows.forEach((row) => {
-                const haystack = [row.dataset.name, row.dataset.cn, row.dataset.serial, row.dataset.reason].join(" ");
-                const matchesQuery = !query || haystack.includes(query);
-                const matchesType = !t || row.dataset.type === t;
-                const matchesStatus = !s || row.dataset.status === s;
-                const matchesExpiry = !e || expiryBucket(row.dataset.notAfter || "") === e;
-                const show = matchesQuery && matchesType && matchesStatus && matchesExpiry;
-                row.classList.toggle("hidden", !show);
-                if (show) visible += 1;
-            });
-            if (noResults) noResults.classList.toggle("hidden", visible !== 0);
-        }
-
-        [q, type, status, expiry].forEach((el) => el && el.addEventListener("input", applyFilters));
-        renderExpiryBadges();
-        applyFilters();
+    <script id="dashboard-data" type="application/json">
+{
+    "orgId": {{ organization.id }},
+    "criticalDays": {{ critical_days }},
+    "warningDays": {{ warning_days }},
+    "expirationDays": {{ expiration_days }}
+}
     </script>
+    <script src="/static/dashboard.js"></script>
     <script src="/static/p12-password-modal.js"></script>
     <script src="/static/consistency-check.js"></script>
     <script src="/static/theme-toggle.js"></script>

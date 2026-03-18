@@ -190,7 +190,12 @@ Recommended production posture:
 
 - The app requires strong operator-managed secrets; it does not fully enforce secret strength by itself.
 - **Rate limiting on `POST /auth/session` (accepted risk):** The authentication endpoint accepts API key credentials with no application-level rate limiting or lockout. Brute-force enumeration of API keys is theoretically possible for any client with network access. This is an accepted risk: rate limiting is treated as a deployment-layer responsibility. Operators should enforce it via reverse proxy rate limiting (e.g., nginx `limit_req_zone`, Caddy `rate_limit`), WAF rules targeting the `/auth/session` path, or network policy restricting client access to the endpoint.
-- A stricter CSP may be possible later, but should be regression-tested with the frontend.
+- **CSP: no `unsafe-inline`:** `script-src` and `style-src` are restricted to `'self'`.
+  All inline scripts and styles have been extracted to static files under `/static/`.
+  Server-side Jinja2 values are passed to JS via `<script type="application/json">` data
+  islands. Inline event handlers have been replaced with `addEventListener` bindings, with
+  `data-*` attributes carrying per-element server-rendered values. Future template changes
+  must not reintroduce inline scripts, inline styles, or `on*` HTML attributes.
 - Security posture depends on correct environment configuration, HTTPS, and access control around the host filesystem.
 
 ## Related Documents

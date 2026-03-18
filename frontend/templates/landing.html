@@ -5,17 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>PKI Management System</title>
     <link href="/static/vendor/bundle.css" rel="stylesheet" type="text/css" />
-    <style>
-        .form-hint-alt {
-            font-size: 0.75rem;
-            font-weight: 400;
-            color: inherit;
-            opacity: 0.55;
-        }
-        .form-hint-warning {
-            color: hsl(var(--wa));
-        }
-    </style>
+    <link href="/static/form-hints.css" rel="stylesheet" type="text/css" />
 </head>
 <body class="bg-base-200 min-h-screen p-6">
     <div class="container mx-auto max-w-6xl">
@@ -52,8 +42,8 @@
                     </div>
                     {% if org_count > 0 %}
                     <button
+                        id="createOrgBtn"
                         class="btn btn-primary"
-                        onclick="createOrgModal.showModal()"
                     >
                         <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4" />
@@ -104,8 +94,8 @@
                         This will set up the complete PKI infrastructure.
                     </p>
                     <button
+                        id="createFirstOrgBtn"
                         class="btn btn-primary btn-lg"
-                        onclick="createOrgModal.showModal()"
                     >
                         <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4" />
@@ -273,8 +263,8 @@
         <!-- System Health Check -->
         <div class="text-center mt-6">
             <button
+                id="consistencyCheckBtn"
                 class="btn btn-sm btn-outline"
-                onclick="runConsistencyCheck()"
             >
                 <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
@@ -301,7 +291,7 @@
             </div>
 
             <div class="modal-action">
-                <button type="button" class="btn btn-primary" onclick="consistencyCheckModal.close()">
+                <button type="button" id="consistencyCheckCloseBtn" class="btn btn-primary">
                     Close
                 </button>
             </div>
@@ -368,7 +358,7 @@
                 </div>
 
                 <div class="modal-action">
-                    <button type="button" class="btn btn-ghost" onclick="createOrgModal.close()">
+                    <button type="button" id="createOrgCancelBtn" class="btn btn-ghost">
                         Cancel
                     </button>
                     <button type="submit" class="btn btn-primary">
@@ -385,17 +375,7 @@
         </form>
     </dialog>
 
-    <script>
-        // Organization name character counter
-        const orgNameInput = document.getElementById("org_display_name");
-        const orgNameCount = document.getElementById("orgNameCount");
-
-        if (orgNameInput) {
-            orgNameInput.addEventListener("input", () => {
-                orgNameCount.textContent = orgNameInput.value.length;
-            });
-        }
-    </script>
+    <script src="/static/landing.js"></script>
     <script src="/static/consistency-check.js"></script>
     <script src="/static/theme-toggle.js"></script>
 </body>

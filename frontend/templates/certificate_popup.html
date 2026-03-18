@@ -5,43 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>{{ certificate.cert_name }} - Certificate Details</title>
     <link href="/static/vendor/bundle.css" rel="stylesheet" type="text/css" />
-    <style>
-        .section-title {
-            font-size: 0.65rem;
-            font-weight: 700;
-            letter-spacing: 0.12em;
-            text-transform: uppercase;
-            opacity: 0.5;
-            margin-bottom: 0.75rem;
-        }
-        .kv-row {
-            display: flex;
-            align-items: baseline;
-            gap: 0.5rem;
-            padding: 0.35rem 0;
-            border-bottom: 1px solid hsl(var(--b3)/0.4);
-        }
-        .kv-row:last-child {
-            border-bottom: none;
-        }
-        .kv-label {
-            min-width: 9rem;
-            font-size: 0.78rem;
-            font-weight: 600;
-            opacity: 0.6;
-            flex-shrink: 0;
-        }
-        .kv-value {
-            font-size: 0.82rem;
-            word-break: break-all;
-        }
-        .copy-toast {
-            display: none;
-            font-size: 0.7rem;
-            color: hsl(var(--su));
-            margin-left: 0.25rem;
-        }
-    </style>
+    <link href="/static/certificate-popup.css" rel="stylesheet" type="text/css" />
 </head>
 <body class="bg-base-200 min-h-screen p-4 md:p-6">
     {% set perms = ui_permissions if ui_permissions is defined else {} %}
@@ -104,7 +68,7 @@
                         </p>
                     </div>
 
-                    <button class="btn btn-ghost btn-sm btn-square flex-shrink-0" onclick="window.close()" title="Close">
+                    <button id="closePopupBtn" class="btn btn-ghost btn-sm btn-square flex-shrink-0" title="Close">
                         <svg xmlns="http://www.w3.org/2000/svg" class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
                             <path stroke-linecap="round" stroke-linejoin="round" d="M6 18 18 6M6 6l12 12" />
                         </svg>
@@ -145,7 +109,7 @@
                         <button
                             class="btn btn-ghost btn-xs btn-square ml-1 opacity-50 hover:opacity-100"
                             title="Copy serial number"
-                            onclick="copySerial('{{ certificate.serial_number | escape }}')"
+                            data-serial="{{ certificate.serial_number | escape }}"
                         >
                             <svg xmlns="http://www.w3.org/2000/svg" class="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
                                 <path stroke-linecap="round" stroke-linejoin="round" d="M15.666 3.888A2.25 2.25 0 0 0 13.5 2.25h-3c-1.03 0-1.9.693-2.166 1.638m7.332 0c.055.194.084.4.084.612v0a.75.75 0 0 1-.75.75H9a.75.75 0 0 1-.75-.75v0c0-.212.03-.418.084-.612m7.332 0c.646.049 1.288.11 1.927.184 1.1.128 1.907 1.077 1.907 2.185V19.5a2.25 2.25 0 0 1-2.25 2.25H6.75A2.25 2.25 0 0 1 4.5 19.5V6.257c0-1.108.806-2.057 1.907-2.185a48.208 48.208 0 0 1 1.927-.184" />
@@ -313,7 +277,7 @@
                     <div class="pb-3 border-b border-base-300">
                         <p class="font-semibold text-sm">PKCS#12 Bundle</p>
                         <p class="text-xs text-base-content/55 mt-0.5 mb-2">Certificate + private key in a password-protected binary bundle (.p12/.pfx).</p>
-                        <button type="button" class="btn btn-secondary btn-sm" onclick="showP12Password({{ organization.id }}, {{ certificate.id }})">
+                        <button type="button" id="downloadP12Btn" class="btn btn-secondary btn-sm" data-org-id="{{ organization.id }}" data-cert-id="{{ certificate.id }}">
                             <svg xmlns="http://www.w3.org/2000/svg" class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
                                 <path stroke-linecap="round" stroke-linejoin="round" d="M3 16.5v2.25A2.25 2.25 0 0 0 5.25 21h13.5A2.25 2.25 0 0 0 21 18.75V16.5M16.5 12 12 16.5m0 0L7.5 12m4.5 4.5V3" />
                             </svg>
@@ -340,109 +304,7 @@
         <div class="pb-10"></div>
     </div>
 
-    <script>
-    function parseUtcTimestamp(raw) {
-        if (!raw) {
-            return null;
-        }
-
-        var normalized = String(raw).trim().replace(" ", "T");
-        var match = normalized.match(
-            /^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2}):(\d{2})$/
-        );
-        if (match) {
-            return new Date(Date.UTC(
-                Number(match[1]),
-                Number(match[2]) - 1,
-                Number(match[3]),
-                Number(match[4]),
-                Number(match[5]),
-                Number(match[6])
-            ));
-        }
-
-        var parsed = new Date(normalized);
-        if (Number.isNaN(parsed.getTime())) {
-            return null;
-        }
-        return parsed;
-    }
-
-    (function () {
-        var bar = document.getElementById("validity-bar");
-        var lbl = document.getElementById("validity-label");
-        if (!bar || !lbl) {
-            return;
-        }
-
-        var notBefore = bar.getAttribute("data-not-before");
-        var notAfter = bar.getAttribute("data-not-after");
-        if (!notBefore || !notAfter) {
-            lbl.textContent = "Validity dates unavailable";
-            return;
-        }
-
-        var start = parseUtcTimestamp(notBefore);
-        var end = parseUtcTimestamp(notAfter);
-        if (!start || !end || end <= start) {
-            lbl.textContent = "Validity dates unavailable";
-            return;
-        }
-
-        var now = new Date();
-        var total = end - start;
-        var used = now - start;
-        var pct = Math.max(0, Math.min(100, (used / total) * 100));
-        bar.value = pct;
-
-        var daysLeft = Math.ceil((end - now) / 86400000);
-        if (now >= end) {
-            bar.className = "progress progress-error w-full";
-            lbl.textContent = "Expired";
-            return;
-        }
-
-        if (now < start) {
-            bar.className = "progress progress-info w-full";
-            lbl.textContent = "Not yet valid";
-            return;
-        }
-
-        if (pct >= 75) {
-            bar.className = "progress progress-warning w-full";
-        } else {
-            bar.className = "progress progress-success w-full";
-        }
-        lbl.textContent = daysLeft + " day" + (daysLeft !== 1 ? "s" : "") + " remaining";
-    })();
-
-    function showCopyToast(message) {
-        var toast = document.getElementById("copy-toast-serial");
-        if (!toast) {
-            return;
-        }
-        toast.textContent = message;
-        toast.style.display = "inline";
-        setTimeout(function () {
-            toast.style.display = "none";
-            toast.textContent = "Copied!";
-        }, 2000);
-    }
-
-    function copySerial(serial) {
-        if (!navigator.clipboard || !navigator.clipboard.writeText) {
-            showCopyToast("Clipboard unavailable");
-            return;
-        }
-
-        navigator.clipboard.writeText(serial).then(function () {
-            showCopyToast("Copied!");
-        }).catch(function () {
-            showCopyToast("Copy failed");
-        });
-    }
-
-    </script>
+    <script src="/static/certificate-popup.js"></script>
 
     <!-- P12 Password Modal -->
     <dialog id="p12PasswordModal" class="modal">
@@ -453,13 +315,13 @@
             </p>
             <div class="flex items-center gap-2 bg-base-200 rounded-box p-3 mb-4">
                 <code id="p12Password" class="flex-1 font-mono text-sm break-all"></code>
-                <button type="button" class="btn btn-sm btn-ghost" onclick="copyP12Password()">
+                <button type="button" id="p12CopyBtn" class="btn btn-sm btn-ghost">
                     Copy
                 </button>
             </div>
             <div id="p12CopyFeedback" class="text-xs text-success mb-3 hidden">Copied to clipboard!</div>
             <div class="modal-action">
-                <button type="button" class="btn btn-ghost" onclick="p12PasswordModal.close()">Cancel</button>
+                <button type="button" id="p12CloseBtn" class="btn btn-ghost">Cancel</button>
                 <a id="p12DownloadLink" href="#" class="btn btn-secondary">Download P12</a>
             </div>
         </div>
