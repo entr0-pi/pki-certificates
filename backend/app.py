@@ -489,10 +489,21 @@ def _cleanup_cert_files(ws: dict) -> None:
                 logger.warning("Failed to clean up artifact %s: %s", p, exc)
 
 
-def _verify_cert_files_exist(ws: dict) -> list[str]:
-    """Return list of expected artifact keys whose files are missing from disk."""
+def _verify_cert_files_exist(ws: dict, cert_type: str | None = None) -> list[str]:
+    """
+    Return list of expected artifact keys whose files are missing from disk.
+    For end-entity certs, p12_path/p12_pwd_path are only created for client/email types,
+    not for server types.
+    """
     missing = []
+    # Skip p12 files for server certs (they don't generate PKCS12)
+    skip_keys = set()
+    if cert_type == "server":
+        skip_keys = {"p12_path", "p12_pwd_path"}
+
     for key in _CERT_ARTIFACT_KEYS:
+        if key in skip_keys:
+            continue
         p = ws.get(key)
         if p and not Path(p).exists():
             missing.append(key)
@@ -2511,7 +2522,8 @@ async def create_end_entity(
         ws = init_end_entity_workspace(_resolve_org_path(org_dir), cert_type, cert_name_clean, layout, artifact_name=cert_uuid)
 
         # Verify files exist immediately after subprocess creates them (before DB commit)
-        missing = _verify_cert_files_exist(ws)
+        # For server certs, p12_path/p12_pwd_path are not created, so skip them
+        missing = _verify_cert_files_exist(ws, cert_type=cert_type)
         if missing:
             logger.critical(
                 "Post-creation consistency failure missing=%s — aborting cert creation",
