@@ -254,7 +254,7 @@ Install optional test dependencies from `tests/requirements-dev.txt` if your env
 
 - Keep `.env`, API keys, JWT secrets, and encryption material out of version control.
 - Use HTTPS in production and set `PKI_COOKIE_SECURE=true`.
-- Back up both the database and encrypted certificate storage.
+- Back up both the database and encrypted certificate storage regularly using the **Full Backup** feature in the Toolbox (admin only) or by manually archiving the `database/` and `data/` directories.
 - Review [docs/SECURITY.md](docs/SECURITY.md) before deploying outside local development.
 
-Last update: 2026 03 17 — Dual password for root certificates
+Last update: 2026 03 18 — Full backup export feature added

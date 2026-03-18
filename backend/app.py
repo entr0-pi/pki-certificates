@@ -4,7 +4,7 @@ Provides web interface for certificate management operations
 """
 
 from fastapi import FastAPI, Request, Form, Query, HTTPException
-from fastapi.responses import HTMLResponse, Response, RedirectResponse, JSONResponse
+from fastapi.responses import HTMLResponse, Response, RedirectResponse, JSONResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from contextlib import asynccontextmanager
@@ -17,6 +17,9 @@ import sys
 import os
 import uuid
 import re
+import sqlite3
+import zipfile
+from datetime import date
 from cryptography import x509
 from cryptography.x509.oid import NameOID
 from cryptography.hazmat.primitives import serialization
@@ -934,6 +937,94 @@ async def health_check():
         "status": "healthy" if db_health['status'] == 'healthy' else "degraded",
         "database": db_health
     }
+
+
+@app.get("/admin/backup/database", dependencies=[require_roles_config()])
+async def download_full_backup(request: Request):
+    """
+    Stream a full backup ZIP containing a consistent DB snapshot and the data directory.
+    Admin only.
+    """
+    db_path = get_db_path()
+    data_dir = get_data_dir()
+    today = date.today().isoformat()
+    zip_filename = f"pki-backup-{today}.zip"
+
+    # Step 1: create consistent SQLite snapshot in a temp file
+    db_tmp = tempfile.NamedTemporaryFile(suffix=".db", delete=False)
+    db_tmp_path = db_tmp.name
+    db_tmp.close()
+
+    try:
+        src = sqlite3.connect(str(db_path))
+        try:
+            dst = sqlite3.connect(db_tmp_path)
+            try:
+                src.backup(dst)
+            finally:
+                dst.close()
+        finally:
+            src.close()
+    except Exception as e:
+        logger.error(f"Database backup failed: {e}")
+        try:
+            os.unlink(db_tmp_path)
+        except OSError:
+            pass
+        raise HTTPException(status_code=500, detail="Failed to create database backup")
+
+    # Step 2: build the ZIP archive in a second temp file
+    zip_tmp = tempfile.NamedTemporaryFile(suffix=".zip", delete=False)
+    zip_tmp_path = zip_tmp.name
+    zip_tmp.close()
+
+    try:
+        with zipfile.ZipFile(zip_tmp_path, "w", compression=zipfile.ZIP_DEFLATED) as zf:
+            # Add the database snapshot
+            zf.write(db_tmp_path, arcname="pki.db")
+            # Add all files under data/ preserving relative structure
+            if data_dir.exists():
+                for file_path in data_dir.rglob("*"):
+                    if file_path.is_file():
+                        zf.write(file_path, arcname=Path("data") / file_path.relative_to(data_dir))
+    except Exception as e:
+        logger.error(f"Backup ZIP creation failed: {e}")
+        for p in (db_tmp_path, zip_tmp_path):
+            try:
+                os.unlink(p)
+            except OSError:
+                pass
+        raise HTTPException(status_code=500, detail="Failed to create backup archive")
+    finally:
+        # DB temp file is no longer needed once added to ZIP
+        try:
+            os.unlink(db_tmp_path)
+        except OSError:
+            pass
+
+    # Step 3: stream the ZIP and clean up
+    def _stream_and_cleanup(path: str):
+        try:
+            with open(path, "rb") as f:
+                while True:
+                    chunk = f.read(65536)
+                    if not chunk:
+                        break
+                    yield chunk
+        finally:
+            try:
+                os.unlink(path)
+            except OSError:
+                pass
+
+    user_name = _get_request_user(request)
+    logger.info(f"Full backup downloaded by user '{user_name}'")
+
+    return StreamingResponse(
+        _stream_and_cleanup(zip_tmp_path),
+        media_type="application/zip",
+        headers={"Content-Disposition": f'attachment; filename="{zip_filename}"'},
+    )
 
 
 @app.get("/organizations", dependencies=[require_roles_config()])

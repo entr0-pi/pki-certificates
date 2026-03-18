@@ -130,7 +130,7 @@ Legend: `✓` allowed, `-` denied, `public` no auth required.
 | `GET /organizations/{org_id}/crl/download` | public | public | public | Latest CRL (public endpoint) |
 | `GET /organizations/{org_id}/crl/bundle` | public | public | public | Bundle of all available organization CRLs (public endpoint) |
 
-### Health and Diagnostics
+### Health, Diagnostics, and Backup
 
 | Route | admin | manager | user | Notes |
 |------|:-----:|:-------:|:----:|------|
@@ -138,6 +138,7 @@ Legend: `✓` allowed, `-` denied, `public` no auth required.
 | `GET /health` | ✓ | ✓ | - | DB/system health |
 | `GET /api/check-consistency` | ✓ | ✓ | - | DB vs disk consistency check |
 | `GET /api/organizations/{org_id}/crls` | ✓ | ✓ | ✓ | List available CRLs per issuer |
+| `GET /admin/backup/database` | ✓ | - | - | Download full backup ZIP |
 
 ## Detailed Route Reference
 
@@ -468,6 +469,24 @@ Legend: `✓` allowed, `-` denied, `public` no auth required.
 []
 ```
 - Notes: Returns list of all CA issuers (root and intermediate) with CRL availability status, download URLs, revocation counts, and last update timestamps. Used by org dashboard to dynamically populate CRL distribution section with operational insights.
+
+### `GET /admin/backup/database`
+- Auth required: yes (admin only)
+- Request JSON: none
+- Response: ZIP file attachment containing:
+  - `pki.db` — consistent SQLite database snapshot at root level
+  - `data/` — entire encrypted certificate storage directory tree
+- Filename format: `pki-backup-YYYY-MM-DD.zip`
+- Content-Type: `application/zip`
+- Notes:
+  - Uses SQLite online backup API (`connection.backup()`) for WAL-safe consistent snapshots
+  - Safe to run while the application is live — does not lock the database
+  - Database backup created in a temp file, added to ZIP, then automatically cleaned up
+  - All encrypted certificate files (`*.pem.enc`, `*.p12.enc`) preserved in their original structure
+  - Backup operation is logged with the requesting user's name
+  - Access restricted to admin role only via RBAC
+- HTTP 403: if user lacks admin role
+- HTTP 500: if backup creation fails (DB or archive error)
 
 ## Security Notes
 

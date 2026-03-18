@@ -1,6 +1,6 @@
 # PKI Security Overview
 
-**Last Updated**: March 15, 2026
+**Last Updated**: March 18, 2026
 **Purpose**: Compact overview of the security controls implemented in the current PKI application.
 
 ## Security Scope
@@ -177,6 +177,28 @@ Operators are responsible for:
 - generating a unique `PKI_ENCRYPTION_SALT`
 - protecting `.env`, database files, encrypted certificate storage, and backups
 - validating reverse proxy behavior for cookies, headers, and TLS termination
+- backing up the database and encrypted certificate storage regularly
+
+### Backup and Disaster Recovery
+
+**Built-in Backup Feature**:
+- Admin users can export a full backup via the Toolbox page (`GET /admin/backup/database`)
+- The export creates a consistent ZIP archive containing:
+  - `pki.db` — SQLite database snapshot (created using WAL-safe online backup API)
+  - `data/` — Complete encrypted certificate storage directory tree
+- The backup can be safely downloaded while the application is live (no database locks)
+- Filename format: `pki-backup-YYYY-MM-DD.zip`
+
+**Backup Storage Security**:
+- Backup files contain encrypted certificate material (`*.pem.enc`, `*.p12.enc`) with AES-256-GCM encryption
+- Full backups should be stored in a secure location with restricted filesystem access
+- If storing backups off-site or in cloud storage, ensure encryption in transit and at rest
+- The encryption key (`PKI_ENCRYPTION_KEY`) and salt (`PKI_ENCRYPTION_SALT`) must be available to restore from backup
+- Test restore procedures regularly to ensure backup integrity
+
+**Manual Backup Alternative**:
+- Operators can manually archive both `database/pki.db` and the `data/` directory
+- Ensure backups are taken consistently and stored securely
 
 Recommended production posture:
 
