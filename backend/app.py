@@ -46,6 +46,7 @@ if __package__:
         load_auth_settings,
         resolve_role,
         verify_session_jwt,
+        validate_startup_configuration,
     )
     from .helpers import compute_enddate
     from .folder import PkiLayout, init_root_workspace, init_intermediate_workspace, init_end_entity_workspace
@@ -61,6 +62,7 @@ else:
         load_auth_settings,
         resolve_role,
         verify_session_jwt,
+        validate_startup_configuration,
     )
     from helpers import compute_enddate
     from folder import PkiLayout, init_root_workspace, init_intermediate_workspace, init_end_entity_workspace
@@ -90,6 +92,11 @@ async def lifespan(app: FastAPI):
     """
     # Startup
     try:
+        # Validate all critical configuration early
+        logger.info("Validating critical configuration...")
+        validate_startup_configuration()
+        logger.info("Configuration validation passed")
+
         auth_settings = load_auth_settings()
         app.state.auth_settings = auth_settings
         resolved_data_dir = get_data_dir()
@@ -114,6 +121,10 @@ async def lifespan(app: FastAPI):
         logger.info("Configuration caching initialized")
 
         logger.info("Application started successfully")
+    except AuthConfigError as e:
+        logger.error(f"Configuration error: {e}")
+        logger.error("Application startup aborted. Please check your environment variables and .env file.")
+        raise
     except Exception as e:
         logger.error(f"Failed to initialize database: {e}")
         logger.error("Application startup aborted. Initialize DB from schema or set PKI_DB_AUTO_REINIT=true.")

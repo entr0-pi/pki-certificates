@@ -5,6 +5,7 @@ from datetime import datetime, timedelta, timezone
 import hmac
 import os
 from typing import Any
+import base64
 
 import jwt
 
@@ -123,3 +124,57 @@ def verify_session_jwt(token: str, settings: AuthSettings, *, leeway_seconds: in
     except jwt.PyJWTError as exc:
         raise TokenValidationError(str(exc)) from exc
     return decoded
+
+
+def validate_encryption_settings() -> None:
+    """
+    Validate critical encryption environment variables at startup.
+    Raises AuthConfigError if validation fails.
+
+    Checks:
+    - PKI_ENCRYPTION_KEY is set and non-empty
+    - PKI_ENCRYPTION_SALT is set and non-empty
+    - PKI_ENCRYPTION_SALT is valid base64-encoded (32 bytes)
+    """
+    encryption_key = os.environ.get("PKI_ENCRYPTION_KEY", "").strip()
+    if not encryption_key:
+        raise AuthConfigError(
+            "Missing PKI_ENCRYPTION_KEY. Set a strong encryption password (32+ characters) in .env. "
+            "Generate with: openssl rand -base64 32"
+        )
+
+    encryption_salt = os.environ.get("PKI_ENCRYPTION_SALT", "").strip()
+    if not encryption_salt:
+        raise AuthConfigError(
+            "Missing PKI_ENCRYPTION_SALT. Set a random salt in .env. "
+            "Generate with: openssl rand -base64 32"
+        )
+
+    # Validate salt is valid base64 and correct length
+    try:
+        salt_bytes = base64.b64decode(encryption_salt)
+    except Exception as exc:
+        raise AuthConfigError(
+            f"PKI_ENCRYPTION_SALT is not valid base64: {exc}"
+        ) from exc
+
+    if len(salt_bytes) != 32:
+        raise AuthConfigError(
+            f"PKI_ENCRYPTION_SALT must decode to exactly 32 bytes, got {len(salt_bytes)} bytes. "
+            "Generate with: openssl rand -base64 32"
+        )
+
+
+def validate_startup_configuration() -> None:
+    """
+    Comprehensive startup validation for all critical configuration.
+    Raises AuthConfigError if any required setting is invalid.
+
+    This should be called once during application startup before any
+    certificate operations or authentication attempts.
+    """
+    # Validate authentication settings
+    load_auth_settings()  # This will raise AuthConfigError if any auth settings are missing
+
+    # Validate encryption settings
+    validate_encryption_settings()
