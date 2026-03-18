@@ -139,6 +139,7 @@ Legend: `✓` allowed, `-` denied, `public` no auth required.
 | `GET /api/check-consistency` | ✓ | ✓ | - | DB vs disk consistency check |
 | `GET /api/organizations/{org_id}/crls` | ✓ | ✓ | ✓ | List available CRLs per issuer |
 | `GET /admin/backup/database` | ✓ | - | - | Download full backup ZIP |
+| `POST /admin/restore/database` | ✓ | - | - | Upload and restore full backup ZIP |
 
 ## Detailed Route Reference
 
@@ -487,6 +488,47 @@ Legend: `✓` allowed, `-` denied, `public` no auth required.
   - Access restricted to admin role only via RBAC
 - HTTP 403: if user lacks admin role
 - HTTP 500: if backup creation fails (DB or archive error)
+
+### `POST /admin/restore/database`
+- Auth required: yes (admin only)
+- Content-Type: `multipart/form-data`
+- Request (form):
+  - `backup_file` (required) — ZIP file previously exported via `GET /admin/backup/database`
+- Response: HTML redirect to `/toolbox?restore=ok` (success) or `/toolbox?restore=error&detail=...` (failure)
+- Upload limits:
+  - Maximum upload size: **5 GB**
+  - Maximum uncompressed size: **10 GB**
+  - Maximum ZIP entries: **50,000**
+- Validation checks:
+  - ZIP file integrity (BadZipFile rejection)
+  - Path traversal protection (rejects entries starting with `/` or containing `..`)
+  - Content validation (only `pki.db` and `data/` allowed at root)
+  - SQLite database integrity (`PRAGMA integrity_check`)
+  - Schema version match (must equal current `SCHEMA_VERSION`)
+- Restore process:
+  1. **Receive upload** — Stream file in 1 MB chunks; abort if size exceeded
+  2. **Validate ZIP** — Check structure, paths, uncompressed size; reject invalid entries
+  3. **Validate database** — Extract `pki.db`, verify integrity and schema version
+  4. **Extract data** — Extract `data/` contents to staging directory
+  5. **Atomic DB swap** — Close connections, swap database file, reopen
+  6. **Atomic data swap** — Clear current data directory, copy new files (handles mounted volumes)
+  7. **Cleanup** — Remove backup files and temporary directories
+  8. **Redirect** — Return to toolbox with success/error message
+- Error recovery:
+  - Before point of no return: all uploads are rejected without touching live data
+  - After DB swap: old database preserved as `.restore_old` backup
+  - After data swap failure: restore from backup copy; DB already swapped (consistent)
+  - If data swap fails mid-operation: staging directory cleaned up on next attempt
+- Security notes:
+  - **Atomic operations**: Database and data directory swapped atomically to maintain consistency
+  - **Cross-device safe**: Uses `shutil.move()` for compatibility with Docker volume mounts
+  - **Destructive operation**: Replaces all live data without undo (backups preserved during recovery)
+  - **Safe for live apps**: Operates on consistent snapshots; no application restart required
+  - Restore operation is logged with the requesting user's name
+  - Access restricted to admin role only via RBAC
+- HTTP 303: See Other redirect (success or error)
+- HTTP 403: if user lacks admin role
+- HTTP 422: if form validation fails
 
 ## Security Notes
 

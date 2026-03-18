@@ -24,6 +24,7 @@ This application provides a complete, self-hosted certificate authority (CA) man
 - **Certificate Revocation Lists** — Automatic CRL generation and distribution when certificates are revoked; public endpoints for external validators.
 - **Encrypted Storage** — Certificate private keys and sensitive data encrypted at rest; decryption only on demand.
 - **Audit Logging** — Track all certificate operations (creation, renewal, revocation) with user attribution and timestamps.
+- **Backup & Restore** — Export and restore full backups (database + certificate storage) from the Toolbox without server restart; atomic swaps ensure consistency.
 - **Policy-Driven Defaults** — Enforce certificate constraints (validity periods, key algorithms, SAN validation, and root password minimum length) via centralized policy configuration.
 
 ### Use Cases
@@ -254,7 +255,7 @@ Install optional test dependencies from `tests/requirements-dev.txt` if your env
 
 - Keep `.env`, API keys, JWT secrets, and encryption material out of version control.
 - Use HTTPS in production and set `PKI_COOKIE_SECURE=true`.
-- Back up both the database and encrypted certificate storage regularly using the **Full Backup** feature in the Toolbox (admin only) or by manually archiving the `database/` and `data/` directories.
+- Back up both the database and encrypted certificate storage regularly using the **Backup and Restore** features in the Toolbox (admin only). You can download backups and restore them at any time without requiring a server restart. Alternatively, manually archive the `database/` and `data/` directories.
 - Review [docs/SECURITY.md](docs/SECURITY.md) before deploying outside local development.
 
-Last update: 2026 03 18 — Full backup export feature added
+Last update: 2026 03 18 — Backup export and restore features added

@@ -189,12 +189,29 @@ Operators are responsible for:
 - The backup can be safely downloaded while the application is live (no database locks)
 - Filename format: `pki-backup-YYYY-MM-DD.zip`
 
+**Built-in Restore Feature**:
+- Admin users can restore a previously exported backup via the Toolbox page (`POST /admin/restore/database`)
+- The restore process:
+  1. Validates ZIP integrity and structure (rejects path traversal attempts, unexpected content)
+  2. Verifies SQLite database integrity (`PRAGMA integrity_check`)
+  3. Confirms schema version compatibility (must match current application version)
+  4. Performs atomic swap of database and data directory (maintains consistency)
+  5. Preserves recovery backups during the operation
+- Can be safely run while the application is live (no manual restart required)
+- Upload limits: 5 GB max file size, 10 GB max uncompressed size
+- Error recovery:
+  - All validations occur before touching live data
+  - If any check fails before the swap point, live state is untouched
+  - If the swap fails, automatic recovery restores from backup
+  - Old database and data backups are preserved during recovery but cleaned up after successful restore
+
 **Backup Storage Security**:
 - Backup files contain encrypted certificate material (`*.pem.enc`, `*.p12.enc`) with AES-256-GCM encryption
 - Full backups should be stored in a secure location with restricted filesystem access
 - If storing backups off-site or in cloud storage, ensure encryption in transit and at rest
 - The encryption key (`PKI_ENCRYPTION_KEY`) and salt (`PKI_ENCRYPTION_SALT`) must be available to restore from backup
 - Test restore procedures regularly to ensure backup integrity
+- Backup operations are audit-logged with the requesting user's identity
 
 **Manual Backup Alternative**:
 - Operators can manually archive both `database/pki.db` and the `data/` directory
