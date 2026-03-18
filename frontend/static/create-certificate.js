@@ -353,9 +353,4 @@ document.querySelectorAll('.cert-form').forEach(form => {
 });
 
 // Bind the "Add SAN" button
-document.addEventListener('DOMContentLoaded', () => {
-    const addSanBtn = document.querySelector('#sanSection button');
-    if (addSanBtn) {
-        addSanBtn.addEventListener('click', () => addSanRow());
-    }
-});
+document.getElementById('addSanBtn')?.addEventListener('click', () => addSanRow());
