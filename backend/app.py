@@ -1328,20 +1328,55 @@ async def restore_full_backup(request: Request, backup_file: UploadFile = File(.
                 status_code=303
             )
 
-        # Phase 6: Atomic data/ swap
+        # Phase 6: Atomic data/ swap (handles mounted volumes)
         data_old = data_dir.parent / "data_restore_old"
         try:
+            # Backup current data directory
             if data_dir.exists():
-                shutil.move(str(data_dir), str(data_old))
+                if data_old.exists():
+                    shutil.rmtree(data_old)
+                shutil.copytree(str(data_dir), str(data_old))
             else:
                 data_old = None
 
-            shutil.move(str(data_restore_tmp), str(data_dir))
+            # Clear current data directory
+            if data_dir.exists():
+                for item in data_dir.iterdir():
+                    if item.is_dir():
+                        shutil.rmtree(item)
+                    else:
+                        item.unlink()
+
+            # Copy new data from staging
+            for src_item in data_restore_tmp.iterdir():
+                src_path = src_item
+                dst_path = data_dir / src_item.name
+                if src_path.is_dir():
+                    shutil.copytree(str(src_path), str(dst_path))
+                else:
+                    shutil.copy2(str(src_path), str(dst_path))
+
+            # Clean up staging directory
+            shutil.rmtree(data_restore_tmp)
         except Exception as e:
-            # Attempt recovery
+            # Attempt recovery by restoring from backup
             try:
-                if data_old and not data_dir.exists():
-                    shutil.move(str(data_old), str(data_dir))
+                if data_old and data_old.exists():
+                    # Clear the partially-updated data directory
+                    if data_dir.exists():
+                        for item in data_dir.iterdir():
+                            if item.is_dir():
+                                shutil.rmtree(item)
+                            else:
+                                item.unlink()
+                    # Restore from backup
+                    for src_item in data_old.iterdir():
+                        src_path = src_item
+                        dst_path = data_dir / src_item.name
+                        if src_path.is_dir():
+                            shutil.copytree(str(src_path), str(dst_path))
+                        else:
+                            shutil.copy2(str(src_path), str(dst_path))
             except Exception as recovery_e:
                 logger.error(f"Failed to recover after data swap failure: {recovery_e}")
 
