@@ -493,12 +493,12 @@ def _verify_cert_files_exist(ws: dict, cert_type: str | None = None) -> list[str
     """
     Return list of expected artifact keys whose files are missing from disk.
     For end-entity certs, p12_path/p12_pwd_path are only created for client/email types,
-    not for server types.
+    not for server/ocsp types.
     """
     missing = []
-    # Skip p12 files for server certs (they don't generate PKCS12)
+    # Skip p12 files for server/ocsp certs (they don't generate PKCS12)
     skip_keys = set()
-    if cert_type == "server":
+    if cert_type in ("server", "ocsp"):
         skip_keys = {"p12_path", "p12_pwd_path"}
 
     for key in _CERT_ARTIFACT_KEYS:
