@@ -189,7 +189,7 @@ Recommended production posture:
 ## Security Limitations And Assumptions
 
 - The app requires strong operator-managed secrets; it does not fully enforce secret strength by itself.
-- Rate limiting is primarily a deployment concern unless implemented upstream.
+- **Rate limiting on `POST /auth/session` (accepted risk):** The authentication endpoint accepts API key credentials with no application-level rate limiting or lockout. Brute-force enumeration of API keys is theoretically possible for any client with network access. This is an accepted risk: rate limiting is treated as a deployment-layer responsibility. Operators should enforce it via reverse proxy rate limiting (e.g., nginx `limit_req_zone`, Caddy `rate_limit`), WAF rules targeting the `/auth/session` path, or network policy restricting client access to the endpoint.
 - A stricter CSP may be possible later, but should be regression-tested with the frontend.
 - Security posture depends on correct environment configuration, HTTPS, and access control around the host filesystem.
 
