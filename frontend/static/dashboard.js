@@ -220,10 +220,7 @@ document.addEventListener('DOMContentLoaded', () => {
         rootRevokeCloseBtn.addEventListener('click', () => rootRevokeBlockModal.close());
     }
 
-    const consistencyCloseBtn = document.querySelector('#consistencyModal button');
-    if (consistencyCloseBtn) {
-        consistencyCloseBtn.addEventListener('click', () => consistencyModal.close());
-    }
+    document.getElementById('consistencyCheckCloseBtn')?.addEventListener('click', () => consistencyModal.close());
 });
 
 [q, type, status, expiry].forEach((el) => el && el.addEventListener("input", applyFilters));

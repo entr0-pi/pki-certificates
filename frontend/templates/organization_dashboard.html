@@ -268,8 +268,11 @@
 
         {% if perms.get("can_run_consistency", False) %}
         <div class="text-center mt-6">
-            <button type="button" id="consistencyCheckBtn" class="btn btn-outline">
-                Run Consistency Check
+            <button type="button" id="consistencyCheckBtn" class="btn btn-sm btn-outline">
+                <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+                </svg>
+                Check System Consistency
             </button>
         </div>
         {% endif %}
@@ -359,7 +362,7 @@
         <div class="modal-box max-w-2xl max-h-96 overflow-y-auto">
             <h3 class="font-semibold text-lg mb-3">Consistency Check</h3>
             <div id="consistencyBody" class="text-sm">Running...</div>
-            <div class="modal-action"><button id="consistencyCloseBtn" class="btn">Close</button></div>
+            <div class="modal-action"><button id="consistencyCheckCloseBtn" class="btn">Close</button></div>
         </div>
         <form method="dialog" class="modal-backdrop"><button>close</button></form>
     </dialog>
