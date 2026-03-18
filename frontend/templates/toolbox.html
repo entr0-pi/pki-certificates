@@ -23,30 +23,6 @@
             </div>
         </div>
 
-        <div class="card bg-base-100 shadow-xl">
-            <div class="card-body">
-                <h2 class="card-title">OpenSSL Revocation Check</h2>
-                <p class="text-base-content/70">
-                    Use the following OpenSSL command to verify that an end-user certificate (and the intermediate) is not revoked:
-                </p>
-                <pre class="bg-base-200 rounded p-4 overflow-x-auto text-sm"><code>openssl verify -crl_check_all -CAfile root.pem -untrusted intermediate.pem -CRLfile crl-bundle.pem certificate.pem</code></pre>
-                <p class="text-base-content/70">
-                    Or alternatively, you can concatenate all the necessary files into one and run the command like this:
-                </p>
-                <pre class="bg-base-200 rounded p-4 overflow-x-auto text-sm"><code>openssl verify -crl_check_all -CAfile full.pem certificate.pem</code></pre>
-                <p class="text-base-content/70">
-                    With the following files:
-                </p>
-                <ul class="list-disc text-base-content/70 space-y-1">
-                    <li><code>root.pem</code> is the root certificate.</li>
-                    <li><code>intermediate.pem</code> is the intermediate certificate.</li>
-                    <li><code>crl-bundle.pem</code> is the CRL bundle for the root and intermediate certificates.</li>
-                    <li><code>full.pem</code> is the concatenation of all of them.</li>
-                    <li><code>certificate.pem</code> is the target fcertificate.</li>
-                </ul>
-            </div>
-        </div>
-
         <div class="card bg-base-100 shadow-xl mt-6">
             <div class="card-body">
                 <h2 class="card-title">Full Backup</h2>
@@ -79,6 +55,30 @@
                         Restore Backup
                     </button>
                 </form>
+            </div>
+        </div>
+
+        <div class="card bg-base-100 shadow-xl mt-6">
+            <div class="card-body">
+                <h2 class="card-title">OpenSSL Revocation Check</h2>
+                <p class="text-base-content/70">
+                    Use the following OpenSSL command to verify that an end-user certificate (and the intermediate) is not revoked:
+                </p>
+                <pre class="bg-base-200 rounded p-4 overflow-x-auto text-sm"><code>openssl verify -crl_check_all -CAfile root.pem -untrusted intermediate.pem -CRLfile crl-bundle.pem certificate.pem</code></pre>
+                <p class="text-base-content/70">
+                    Or alternatively, you can concatenate all the necessary files into one and run the command like this:
+                </p>
+                <pre class="bg-base-200 rounded p-4 overflow-x-auto text-sm"><code>openssl verify -crl_check_all -CAfile full.pem certificate.pem</code></pre>
+                <p class="text-base-content/70">
+                    With the following files:
+                </p>
+                <ul class="list-disc text-base-content/70 space-y-1">
+                    <li><code>root.pem</code> is the root certificate.</li>
+                    <li><code>intermediate.pem</code> is the intermediate certificate.</li>
+                    <li><code>crl-bundle.pem</code> is the CRL bundle for the root and intermediate certificates.</li>
+                    <li><code>full.pem</code> is the concatenation of all of them.</li>
+                    <li><code>certificate.pem</code> is the target fcertificate.</li>
+                </ul>
             </div>
         </div>
     </div>
