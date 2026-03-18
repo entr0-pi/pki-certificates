@@ -197,15 +197,8 @@ document.querySelector('#certTableBody')?.addEventListener('click', (e) => {
 
 // Bind modal buttons by ID
 document.addEventListener('DOMContentLoaded', () => {
-    const toggleAuditBtn = document.querySelector('[onclick*="toggleAuditLogs"]');
-    if (toggleAuditBtn) {
-        toggleAuditBtn.addEventListener('click', toggleAuditLogs);
-    }
-
-    const consistencyCheckBtn = document.querySelector('[onclick*="runConsistencyCheck"]');
-    if (consistencyCheckBtn) {
-        consistencyCheckBtn.addEventListener('click', runConsistencyCheck);
-    }
+    document.getElementById('toggleAuditBtn')?.addEventListener('click', toggleAuditLogs);
+    document.getElementById('consistencyCheckBtn')?.addEventListener('click', runConsistencyCheck);
 
     const p12CopyBtn = document.querySelector('#p12PasswordModal .btn-ghost');
     if (p12CopyBtn) {
