@@ -701,6 +701,76 @@ def create_certificate_with_extensions(cert_info: dict) -> int:
         return cert_id
 
 
+def create_certificate_with_extensions_and_revoke(
+    cert_info: dict, renewal_cert_id: int | None = None
+) -> int:
+    """
+    Insert certificate and all extension rows, and optionally revoke the
+    renewal target, all in ONE transaction.
+    Returns the new certificate ID.
+    If renewal_cert_id is provided but not found / not active, logs a warning
+    but still commits the new certificate (non-blocking).
+    """
+    base_cert = {k: cert_info[k] for k in _CERT_INSERT_KEYS if k in cert_info}
+    if not base_cert.get("cert_uuid"):
+        base_cert["cert_uuid"] = str(uuid.uuid4())
+
+    with engine.begin() as conn:
+        result = conn.execute(text("""
+            INSERT INTO certificates (
+                cert_uuid, organization_id, cert_name, cert_type, issuer_cert_id,
+                subject_country, subject_state, subject_locality, subject_organization,
+                subject_org_unit, subject_common_name, subject_email,
+                serial_number, not_before, not_after,
+                key_algorithm, key_size, ec_curve, signature_hash,
+                cert_path, key_path, csr_path, pwd_path,
+                created_at, updated_at
+            ) VALUES (
+                :cert_uuid, :organization_id, :cert_name, :cert_type, :issuer_cert_id,
+                :subject_country, :subject_state, :subject_locality, :subject_organization,
+                :subject_org_unit, :subject_common_name, :subject_email,
+                :serial_number, :not_before, :not_after,
+                :key_algorithm, :key_size, :ec_curve, :signature_hash,
+                :cert_path, :key_path, :csr_path, :pwd_path,
+                CURRENT_TIMESTAMP, CURRENT_TIMESTAMP
+            )
+        """), base_cert)
+        cert_id = result.lastrowid
+        logger.info(f"Created certificate with extensions: {base_cert.get('cert_name')} (ID: {cert_id})")
+
+        _insert_subject_alternative_names(conn, cert_id, cert_info.get("sans", []))
+        _insert_basic_constraints(conn, cert_id, cert_info.get("basic_constraints"))
+        _insert_key_usage(conn, cert_id, cert_info.get("key_usage"))
+        _insert_extended_key_usages(conn, cert_id, cert_info.get("extended_key_usage", []))
+        _insert_certificate_extensions(conn, cert_id, cert_info.get("extensions", []))
+
+        if renewal_cert_id is not None:
+            result2 = conn.execute(
+                text("""
+                UPDATE certificates
+                SET status = 'revoked',
+                    revoked_at = CURRENT_TIMESTAMP,
+                    revocation_reason = 'superseded',
+                    updated_at = CURRENT_TIMESTAMP
+                WHERE id = :id AND status = 'active'
+                """),
+                {"id": renewal_cert_id},
+            )
+            if result2.rowcount == 0:
+                logger.warning(
+                    "Renewal revocation of cert_id=%d had no effect (not found or not active)",
+                    renewal_cert_id,
+                )
+
+        return cert_id
+
+
+def delete_certificate_by_id(cert_id: int) -> None:
+    """Delete a certificate row by ID. Extension rows are removed via ON DELETE CASCADE."""
+    with get_db_connection() as conn:
+        conn.execute(text("DELETE FROM certificates WHERE id = :id"), {"id": cert_id})
+
+
 # ============================================================================
 # ORGANIZATIONS
 # ============================================================================

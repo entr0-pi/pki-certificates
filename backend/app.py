@@ -475,12 +475,37 @@ def _get_request_user(request: Request) -> str:
     return request.state.auth.get("sub", "unknown") if hasattr(request.state, "auth") else "unknown"
 
 
-def _handle_renewal_revocation(org: dict, org_id: int, renewal_of_cert_id: str) -> dict | None:
+_CERT_ARTIFACT_KEYS = ("crt_path", "key_path", "csr_path", "pwd_path", "p12_path", "p12_pwd_path")
+
+
+def _cleanup_cert_files(ws: dict) -> None:
+    """Remove certificate artifact files from a workspace dict. Used on error rollback."""
+    for key in _CERT_ARTIFACT_KEYS:
+        p = ws.get(key)
+        if p:
+            try:
+                Path(p).unlink(missing_ok=True)
+            except Exception as exc:
+                logger.warning("Failed to clean up artifact %s: %s", p, exc)
+
+
+def _verify_cert_files_exist(ws: dict) -> list[str]:
+    """Return list of expected artifact keys whose files are missing from disk."""
+    missing = []
+    for key in _CERT_ARTIFACT_KEYS:
+        p = ws.get(key)
+        if p and not Path(p).exists():
+            missing.append(key)
+    return missing
+
+
+def _handle_renewal_post_commit(org: dict, org_id: int, renewal_of_cert_id: str) -> dict | None:
     """
-    Auto-revoke the previous certificate when a renewal is created.
+    Post-commitment renewal handling: check for blocking subordinates, trigger audit/CRL.
+    Revocation is now done atomically with the new cert creation in db layer.
     For intermediate CAs, blocks renewal if active subordinates exist.
     Returns None on success, or dict with error details if blocking prevents renewal.
-    Silently ignores non-blocking errors to prevent renewal from failing if revocation fails.
+    Silently ignores non-blocking errors to prevent renewal from failing.
     """
     if not (renewal_of_cert_id and renewal_of_cert_id.strip()):
         return None
@@ -504,7 +529,6 @@ def _handle_renewal_revocation(org: dict, org_id: int, renewal_of_cert_id: str) 
                         "child_certs": [{"id": c["id"], "cert_name": c["cert_name"]} for c in active_children]
                     }
 
-            db.revoke_certificate(old_cert_id, "superseded")
             # Audit: old cert superseded by renewal
             try:
                 db.log_certificate_operation(old_cert_id, "renewed", None, json.dumps({"superseded_by": "renewal"}))
@@ -517,7 +541,7 @@ def _handle_renewal_revocation(org: dict, org_id: int, renewal_of_cert_id: str) 
         else:
             logger.warning(f"Renewal attempt with non-existent cert_id {old_cert_id} for org_id {org_id}")
     except (ValueError, Exception):
-        pass  # Silently ignore if revocation/CRL regeneration fails
+        pass  # Silently ignore if subordinate check/CRL regeneration fails
     return None
 
 
@@ -1899,6 +1923,15 @@ async def create_root_ca(
         except (ValueError, Exception):
             pass  # Ignore validation errors and proceed
 
+    ws: dict | None = None
+    db_committed = False
+    _renewal_id_int: int | None = None
+    if renewal_of_cert_id and renewal_of_cert_id.strip():
+        try:
+            _renewal_id_int = int(renewal_of_cert_id)
+        except ValueError:
+            pass
+
     try:
         create_output = _run_create_cert_subprocess(params)
 
@@ -1916,7 +1949,30 @@ async def create_root_ca(
             org_dir=_resolve_org_path(org_dir),
         )
         cert_info["cert_uuid"] = cert_uuid
-        cert_id = db.create_certificate_with_extensions(cert_info)
+        cert_id = db.create_certificate_with_extensions_and_revoke(cert_info, renewal_cert_id=_renewal_id_int)
+        db_committed = True
+
+        # Verify files exist on disk after creation
+        missing = _verify_cert_files_exist(ws)
+        if missing:
+            logger.critical(
+                "Post-creation consistency failure cert_id=%d org_id=%d missing=%s — rolling back",
+                cert_id, org_id, missing,
+            )
+            try:
+                db.delete_certificate_by_id(cert_id)
+            except Exception as rollback_exc:
+                logger.error("DB rollback failed for cert_id=%d: %s", cert_id, rollback_exc)
+            _cleanup_cert_files(ws)
+            return templates.TemplateResponse(
+                "error.html",
+                {
+                    "request": request,
+                    "error_title": "Certificate Creation Failed",
+                    "error_message": "Certificate files are missing after creation. The operation has been rolled back. Please try again.",
+                    "org_name": org["name"],
+                },
+            )
 
         # Get session identity for audit logging
         user_name = _get_request_user(request)
@@ -1929,8 +1985,8 @@ async def create_root_ca(
         if created_root:
             _trigger_crl_regeneration(org, cert_id, created_root, root_user_password=root_ca_password)
 
-        # Auto-revoke previous cert if this is a renewal
-        renewal_error = _handle_renewal_revocation(org, org_id, renewal_of_cert_id)
+        # Post-commitment renewal handling
+        renewal_error = _handle_renewal_post_commit(org, org_id, renewal_of_cert_id)
         if renewal_error:
             return templates.TemplateResponse(
                 "error.html",
@@ -1956,6 +2012,8 @@ async def create_root_ca(
 
     except subprocess.CalledProcessError as e:
         logger.exception(f"Certificate creation subprocess failed for org_id={org_id}")
+        if ws and not db_committed:
+            _cleanup_cert_files(ws)
         return templates.TemplateResponse(
             "error.html",
             {
@@ -1967,6 +2025,8 @@ async def create_root_ca(
         )
     except TimeoutError as e:
         logger.exception(f"Certificate creation subprocess timed out for org_id={org_id}")
+        if ws and not db_committed:
+            _cleanup_cert_files(ws)
         return templates.TemplateResponse(
             "error.html",
             {
@@ -1978,6 +2038,8 @@ async def create_root_ca(
         )
     except Exception as e:
         logger.exception(f"Unexpected error creating root CA for org_id={org_id}")
+        if ws and not db_committed:
+            _cleanup_cert_files(ws)
         return templates.TemplateResponse(
             "error.html",
             {
@@ -2126,6 +2188,15 @@ async def create_intermediate_ca(
     if eccurve.strip():
         params["eccurve"] = eccurve.strip()
 
+    ws: dict | None = None
+    db_committed = False
+    _renewal_id_int: int | None = None
+    if renewal_of_cert_id and renewal_of_cert_id.strip():
+        try:
+            _renewal_id_int = int(renewal_of_cert_id)
+        except ValueError:
+            pass
+
     try:
         create_output = _run_create_cert_subprocess(params)
 
@@ -2149,7 +2220,30 @@ async def create_intermediate_ca(
             issuer_cert_id=issuer_cert_id,
         )
         cert_info["cert_uuid"] = cert_uuid
-        cert_id = db.create_certificate_with_extensions(cert_info)
+        cert_id = db.create_certificate_with_extensions_and_revoke(cert_info, renewal_cert_id=_renewal_id_int)
+        db_committed = True
+
+        # Verify files exist on disk after creation
+        missing = _verify_cert_files_exist(ws)
+        if missing:
+            logger.critical(
+                "Post-creation consistency failure cert_id=%d org_id=%d missing=%s — rolling back",
+                cert_id, org_id, missing,
+            )
+            try:
+                db.delete_certificate_by_id(cert_id)
+            except Exception as rollback_exc:
+                logger.error("DB rollback failed for cert_id=%d: %s", cert_id, rollback_exc)
+            _cleanup_cert_files(ws)
+            return templates.TemplateResponse(
+                "error.html",
+                {
+                    "request": request,
+                    "error_title": "Certificate Creation Failed",
+                    "error_message": "Certificate files are missing after creation. The operation has been rolled back. Please try again.",
+                    "org_name": org["name"],
+                },
+            )
 
         # Get session identity for audit logging
         user_name = _get_request_user(request)
@@ -2162,8 +2256,8 @@ async def create_intermediate_ca(
         if created_intermediate:
             _trigger_crl_regeneration(org, cert_id, created_intermediate, root_user_password=root_user_password)
 
-        # Auto-revoke previous cert if this is a renewal
-        renewal_error = _handle_renewal_revocation(org, org_id, renewal_of_cert_id)
+        # Post-commitment renewal handling
+        renewal_error = _handle_renewal_post_commit(org, org_id, renewal_of_cert_id)
         if renewal_error:
             return templates.TemplateResponse(
                 "error.html",
@@ -2179,6 +2273,8 @@ async def create_intermediate_ca(
 
     except subprocess.CalledProcessError as e:
         logger.exception(f"Certificate creation subprocess failed for org_id={org_id}")
+        if ws and not db_committed:
+            _cleanup_cert_files(ws)
         return templates.TemplateResponse(
             "error.html",
             {
@@ -2190,6 +2286,8 @@ async def create_intermediate_ca(
         )
     except TimeoutError as e:
         logger.exception(f"Certificate creation subprocess timed out for org_id={org_id}")
+        if ws and not db_committed:
+            _cleanup_cert_files(ws)
         return templates.TemplateResponse(
             "error.html",
             {
@@ -2201,6 +2299,8 @@ async def create_intermediate_ca(
         )
     except Exception as e:
         logger.exception(f"Unexpected error creating intermediate CA for org_id={org_id}")
+        if ws and not db_committed:
+            _cleanup_cert_files(ws)
         return templates.TemplateResponse(
             "error.html",
             {
@@ -2403,6 +2503,15 @@ async def create_end_entity(
         except (ValueError, Exception):
             pass  # Ignore validation errors and proceed
 
+    ws: dict | None = None
+    db_committed = False
+    _renewal_id_int: int | None = None
+    if renewal_of_cert_id and renewal_of_cert_id.strip():
+        try:
+            _renewal_id_int = int(renewal_of_cert_id)
+        except ValueError:
+            pass
+
     try:
         create_output = _run_create_cert_subprocess(params)
 
@@ -2421,7 +2530,30 @@ async def create_end_entity(
             issuer_cert_id=issuer_cert_id,
         )
         cert_info["cert_uuid"] = cert_uuid
-        cert_id = db.create_certificate_with_extensions(cert_info)
+        cert_id = db.create_certificate_with_extensions_and_revoke(cert_info, renewal_cert_id=_renewal_id_int)
+        db_committed = True
+
+        # Verify files exist on disk after creation
+        missing = _verify_cert_files_exist(ws)
+        if missing:
+            logger.critical(
+                "Post-creation consistency failure cert_id=%d org_id=%d missing=%s — rolling back",
+                cert_id, org_id, missing,
+            )
+            try:
+                db.delete_certificate_by_id(cert_id)
+            except Exception as rollback_exc:
+                logger.error("DB rollback failed for cert_id=%d: %s", cert_id, rollback_exc)
+            _cleanup_cert_files(ws)
+            return templates.TemplateResponse(
+                "error.html",
+                {
+                    "request": request,
+                    "error_title": "Certificate Creation Failed",
+                    "error_message": "Certificate files are missing after creation. The operation has been rolled back. Please try again.",
+                    "org_name": org["name"],
+                },
+            )
 
         # Get session identity for audit logging
         user_name = _get_request_user(request)
@@ -2430,8 +2562,8 @@ async def create_end_entity(
         except Exception as e:
             logger.warning(f"Audit log failed (non-fatal): {e}")
 
-        # Auto-revoke previous cert if this is a renewal
-        renewal_error = _handle_renewal_revocation(org, org_id, renewal_of_cert_id)
+        # Post-commitment renewal handling
+        renewal_error = _handle_renewal_post_commit(org, org_id, renewal_of_cert_id)
         if renewal_error:
             return templates.TemplateResponse(
                 "error.html",
@@ -2447,6 +2579,8 @@ async def create_end_entity(
 
     except subprocess.CalledProcessError as e:
         logger.exception(f"Certificate creation subprocess failed for org_id={org_id}")
+        if ws and not db_committed:
+            _cleanup_cert_files(ws)
         return templates.TemplateResponse(
             "error.html",
             {
@@ -2458,6 +2592,8 @@ async def create_end_entity(
         )
     except TimeoutError as e:
         logger.exception(f"Certificate creation subprocess timed out for org_id={org_id}")
+        if ws and not db_committed:
+            _cleanup_cert_files(ws)
         return templates.TemplateResponse(
             "error.html",
             {
@@ -2469,6 +2605,8 @@ async def create_end_entity(
         )
     except Exception as e:
         logger.exception(f"Unexpected error creating end-entity certificate for org_id={org_id}")
+        if ws and not db_committed:
+            _cleanup_cert_files(ws)
         return templates.TemplateResponse(
             "error.html",
             {
