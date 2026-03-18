@@ -1302,12 +1302,12 @@ async def restore_full_backup(request: Request, backup_file: UploadFile = File(.
         try:
             db.engine.dispose()
             db_path.replace(db_old)
-            Path(restore_db_tmp_path).replace(db_path)
+            shutil.move(restore_db_tmp_path, str(db_path))
         except Exception as e:
             # Attempt recovery
             try:
                 if db_old.exists() and not db_path.exists():
-                    db_old.replace(db_path)
+                    shutil.move(str(db_old), str(db_path))
                 db.engine.dispose()
             except Exception as recovery_e:
                 logger.error(f"Failed to recover after DB swap failure: {recovery_e}")
@@ -1332,16 +1332,16 @@ async def restore_full_backup(request: Request, backup_file: UploadFile = File(.
         data_old = data_dir.parent / "data_restore_old"
         try:
             if data_dir.exists():
-                os.rename(data_dir, data_old)
+                shutil.move(str(data_dir), str(data_old))
             else:
                 data_old = None
 
-            os.rename(data_restore_tmp, data_dir)
+            shutil.move(str(data_restore_tmp), str(data_dir))
         except Exception as e:
             # Attempt recovery
             try:
                 if data_old and not data_dir.exists():
-                    os.rename(data_old, data_dir)
+                    shutil.move(str(data_old), str(data_dir))
             except Exception as recovery_e:
                 logger.error(f"Failed to recover after data swap failure: {recovery_e}")
 
