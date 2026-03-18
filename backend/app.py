@@ -1938,6 +1938,24 @@ async def create_root_ca(
         layout = PkiLayout()
         ws = init_root_workspace(_resolve_org_path(org_dir), cert_name_clean, layout, artifact_name=cert_uuid)
 
+        # Verify files exist immediately after subprocess creates them (before DB commit)
+        missing = _verify_cert_files_exist(ws)
+        if missing:
+            logger.critical(
+                "Post-creation consistency failure missing=%s — aborting cert creation",
+                missing,
+            )
+            _cleanup_cert_files(ws)
+            return templates.TemplateResponse(
+                "error.html",
+                {
+                    "request": request,
+                    "error_title": "Certificate Creation Failed",
+                    "error_message": "Certificate files are missing after creation. Please try again.",
+                    "org_name": org["name"],
+                },
+            )
+
         cert_info = db.extract_certificate_metadata(
             org_id=org_id,
             cert_name=cert_name_clean,
@@ -1951,28 +1969,6 @@ async def create_root_ca(
         cert_info["cert_uuid"] = cert_uuid
         cert_id = db.create_certificate_with_extensions_and_revoke(cert_info, renewal_cert_id=_renewal_id_int)
         db_committed = True
-
-        # Verify files exist on disk after creation
-        missing = _verify_cert_files_exist(ws)
-        if missing:
-            logger.critical(
-                "Post-creation consistency failure cert_id=%d org_id=%d missing=%s — rolling back",
-                cert_id, org_id, missing,
-            )
-            try:
-                db.delete_certificate_by_id(cert_id)
-            except Exception as rollback_exc:
-                logger.error("DB rollback failed for cert_id=%d: %s", cert_id, rollback_exc)
-            _cleanup_cert_files(ws)
-            return templates.TemplateResponse(
-                "error.html",
-                {
-                    "request": request,
-                    "error_title": "Certificate Creation Failed",
-                    "error_message": "Certificate files are missing after creation. The operation has been rolled back. Please try again.",
-                    "org_name": org["name"],
-                },
-            )
 
         # Get session identity for audit logging
         user_name = _get_request_user(request)
@@ -2201,6 +2197,25 @@ async def create_intermediate_ca(
         create_output = _run_create_cert_subprocess(params)
 
         ws = init_intermediate_workspace(_resolve_org_path(org_dir), cert_name_clean, layout, artifact_name=cert_uuid)
+
+        # Verify files exist immediately after subprocess creates them (before DB commit)
+        missing = _verify_cert_files_exist(ws)
+        if missing:
+            logger.critical(
+                "Post-creation consistency failure missing=%s — aborting cert creation",
+                missing,
+            )
+            _cleanup_cert_files(ws)
+            return templates.TemplateResponse(
+                "error.html",
+                {
+                    "request": request,
+                    "error_title": "Certificate Creation Failed",
+                    "error_message": "Certificate files are missing after creation. Please try again.",
+                    "org_name": org["name"],
+                },
+            )
+
         issuer_cert = db.get_latest_certificate_by_name_and_type(
             org_id=org_id,
             cert_name=root_ca,
@@ -2222,28 +2237,6 @@ async def create_intermediate_ca(
         cert_info["cert_uuid"] = cert_uuid
         cert_id = db.create_certificate_with_extensions_and_revoke(cert_info, renewal_cert_id=_renewal_id_int)
         db_committed = True
-
-        # Verify files exist on disk after creation
-        missing = _verify_cert_files_exist(ws)
-        if missing:
-            logger.critical(
-                "Post-creation consistency failure cert_id=%d org_id=%d missing=%s — rolling back",
-                cert_id, org_id, missing,
-            )
-            try:
-                db.delete_certificate_by_id(cert_id)
-            except Exception as rollback_exc:
-                logger.error("DB rollback failed for cert_id=%d: %s", cert_id, rollback_exc)
-            _cleanup_cert_files(ws)
-            return templates.TemplateResponse(
-                "error.html",
-                {
-                    "request": request,
-                    "error_title": "Certificate Creation Failed",
-                    "error_message": "Certificate files are missing after creation. The operation has been rolled back. Please try again.",
-                    "org_name": org["name"],
-                },
-            )
 
         # Get session identity for audit logging
         user_name = _get_request_user(request)
@@ -2516,6 +2509,25 @@ async def create_end_entity(
         create_output = _run_create_cert_subprocess(params)
 
         ws = init_end_entity_workspace(_resolve_org_path(org_dir), cert_type, cert_name_clean, layout, artifact_name=cert_uuid)
+
+        # Verify files exist immediately after subprocess creates them (before DB commit)
+        missing = _verify_cert_files_exist(ws)
+        if missing:
+            logger.critical(
+                "Post-creation consistency failure missing=%s — aborting cert creation",
+                missing,
+            )
+            _cleanup_cert_files(ws)
+            return templates.TemplateResponse(
+                "error.html",
+                {
+                    "request": request,
+                    "error_title": "Certificate Creation Failed",
+                    "error_message": "Certificate files are missing after creation. Please try again.",
+                    "org_name": org["name"],
+                },
+            )
+
         issuer_cert_id = issuer_cert["id"] if issuer_cert else None
 
         cert_info = db.extract_certificate_metadata(
@@ -2532,28 +2544,6 @@ async def create_end_entity(
         cert_info["cert_uuid"] = cert_uuid
         cert_id = db.create_certificate_with_extensions_and_revoke(cert_info, renewal_cert_id=_renewal_id_int)
         db_committed = True
-
-        # Verify files exist on disk after creation
-        missing = _verify_cert_files_exist(ws)
-        if missing:
-            logger.critical(
-                "Post-creation consistency failure cert_id=%d org_id=%d missing=%s — rolling back",
-                cert_id, org_id, missing,
-            )
-            try:
-                db.delete_certificate_by_id(cert_id)
-            except Exception as rollback_exc:
-                logger.error("DB rollback failed for cert_id=%d: %s", cert_id, rollback_exc)
-            _cleanup_cert_files(ws)
-            return templates.TemplateResponse(
-                "error.html",
-                {
-                    "request": request,
-                    "error_title": "Certificate Creation Failed",
-                    "error_message": "Certificate files are missing after creation. The operation has been rolled back. Please try again.",
-                    "org_name": org["name"],
-                },
-            )
 
         # Get session identity for audit logging
         user_name = _get_request_user(request)
