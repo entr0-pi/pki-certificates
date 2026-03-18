@@ -1325,8 +1325,8 @@ def _resolve_crl_path_for_cert(org: dict, cert: dict) -> Path | None:
     return path if path.exists() else None
 
 
-@app.get("/api/organizations/{org_id}/crls", response_model=list[dict])
-async def list_organization_crls(org_id: int, dependencies=[require_roles_config()]):
+@app.get("/api/organizations/{org_id}/crls", response_model=list[dict], dependencies=[require_roles_config()])
+async def list_organization_crls(org_id: int):
     """
     List all available CRL issuers for an organization.
     Returns: [{issuer_name, cert_type, has_crl, download_url, revoked_count, last_updated}]
