@@ -3,28 +3,40 @@ FastAPI application for PKI Management System
 Provides web interface for certificate management operations
 """
 
-from fastapi import FastAPI, Request, Form, Query, HTTPException, UploadFile, File
-from fastapi.responses import HTMLResponse, Response, RedirectResponse, JSONResponse, StreamingResponse
+import json
+import logging
+import os
+import re
+import shutil
+import sqlite3
+import subprocess
+import sys
+import tempfile
+import uuid
+import zipfile
+from contextlib import asynccontextmanager
+from datetime import date
+from pathlib import Path
+
+from cryptography import x509
+from cryptography.hazmat.primitives import serialization
+from cryptography.x509.oid import NameOID
+from dotenv import load_dotenv
+from fastapi import FastAPI, File, Form, HTTPException, Query, Request, UploadFile
+from fastapi.responses import (
+    HTMLResponse,
+    JSONResponse,
+    RedirectResponse,
+    Response,
+    StreamingResponse,
+)
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
-from contextlib import asynccontextmanager
-import subprocess
-from pathlib import Path
-import logging
-import json
-import tempfile
-import sys
-import os
-import uuid
-import re
-import sqlite3
-import zipfile
-import shutil
-from datetime import date
-from cryptography import x509
-from cryptography.x509.oid import NameOID
-from cryptography.hazmat.primitives import serialization
+from logging_config import configure_app_logging, get_uvicorn_log_config
 from sqlalchemy.exc import IntegrityError as SAIntegrityError
+
+# Import Env variables
+load_dotenv()
 
 # Import ConsistencyChecker at module level to avoid sys.path manipulation in handlers
 # This is done once at startup, not per-request
@@ -36,60 +48,88 @@ try:
     from check_consistency import ConsistencyChecker
 except ImportError as e:
     logger_tmp = logging.getLogger(__name__)
-    logger_tmp.warning(f"Failed to import ConsistencyChecker at module load: {e}. Consistency check endpoint will be unavailable.")
+    logger_tmp.warning(
+        f"Failed to import ConsistencyChecker at module load: {e}. Consistency check endpoint will be unavailable."
+    )
     ConsistencyChecker = None
 
 if __package__:
-    from . import db
-    from . import file_crypto
-    from . import cert_crypto
+    from . import cert_crypto, db, file_crypto
     from .auth import (
         AuthConfigError,
         AuthSettings,
         create_session_jwt,
         load_auth_settings,
         resolve_role,
-        verify_session_jwt,
         validate_startup_configuration,
+        verify_session_jwt,
+    )
+    from .folder import (
+        PkiLayout,
+        init_end_entity_workspace,
+        init_intermediate_workspace,
+        init_root_workspace,
     )
     from .helpers import compute_enddate
-    from .folder import PkiLayout, init_root_workspace, init_intermediate_workspace, init_end_entity_workspace
-    from .path_config import get_project_root, get_data_dir, get_db_path, is_under_temp_dir
+    from .path_config import (
+        get_data_dir,
+        get_db_path,
+        get_project_root,
+        is_under_temp_dir,
+    )
 else:
+    import cert_crypto
     import db
     import file_crypto
-    import cert_crypto
     from auth import (
         AuthConfigError,
         AuthSettings,
         create_session_jwt,
         load_auth_settings,
         resolve_role,
-        verify_session_jwt,
         validate_startup_configuration,
+        verify_session_jwt,
+    )
+    from folder import (
+        PkiLayout,
+        init_end_entity_workspace,
+        init_intermediate_workspace,
+        init_root_workspace,
     )
     from helpers import compute_enddate
-    from folder import PkiLayout, init_root_workspace, init_intermediate_workspace, init_end_entity_workspace
-    from path_config import get_project_root, get_data_dir, get_db_path, is_under_temp_dir
+    from path_config import (
+        get_data_dir,
+        get_db_path,
+        get_project_root,
+        is_under_temp_dir,
+    )
 
 # Configure logging with centralized ISO 8601 format
-from logging_config import configure_app_logging, get_uvicorn_log_config
 configure_app_logging()
 logger = logging.getLogger(__name__)
 
 # RFC 5280 valid revocation reason codes
-VALID_REVOCATION_REASONS = frozenset({
-    "unspecified", "keyCompromise", "caCompromise", "affiliationChanged",
-    "superseded", "cessationOfOperation", "certificateHold",
-    "removeFromCRL", "privilegeWithdrawn", "aACompromise",
-})
+VALID_REVOCATION_REASONS = frozenset(
+    {
+        "unspecified",
+        "keyCompromise",
+        "caCompromise",
+        "affiliationChanged",
+        "superseded",
+        "cessationOfOperation",
+        "certificateHold",
+        "removeFromCRL",
+        "privilegeWithdrawn",
+        "aACompromise",
+    }
+)
 
 # Default subprocess timeout in seconds (can be overridden by environment variable)
 SUBPROCESS_TIMEOUT = int(os.environ.get("PKI_SUBPROCESS_TIMEOUT_SECONDS", "120"))
 
 # Restore operation limits
-_RESTORE_MAX_UPLOAD_BYTES = 5 * 1024 ** 3   # 5 GB hard cap on upload
-_RESTORE_MAX_UNCOMPRESSED_BYTES = 10 * 1024 ** 3  # 10 GB uncompressed cap
+_RESTORE_MAX_UPLOAD_BYTES = 5 * 1024**3  # 5 GB hard cap on upload
+_RESTORE_MAX_UNCOMPRESSED_BYTES = 10 * 1024**3  # 10 GB uncompressed cap
 _RESTORE_MAX_ZIP_ENTRIES = 50_000
 
 
@@ -112,13 +152,20 @@ async def lifespan(app: FastAPI):
         resolved_db_path = get_db_path()
         logger.info("Configured data directory: %s", resolved_data_dir)
         logger.info("Configured database path: %s", resolved_db_path)
-        logger.info("Configured session duration: %s minutes", auth_settings.session_minutes)
+        logger.info(
+            "Configured session duration: %s minutes", auth_settings.session_minutes
+        )
         if is_under_temp_dir(resolved_data_dir):
             logger.warning(
                 "PKI_DATA_DIR points to a temp location (%s). This is not recommended for persistent PKI data.",
                 resolved_data_dir,
             )
-        auto_reinit = os.environ.get("PKI_DB_AUTO_REINIT", "false").strip().lower() in ("1", "true", "yes", "on")
+        auto_reinit = os.environ.get("PKI_DB_AUTO_REINIT", "false").strip().lower() in (
+            "1",
+            "true",
+            "yes",
+            "on",
+        )
         db.init_database(auto_recreate_invalid=auto_reinit)
         _validate_rbac_config()
         logger.info("RBAC configuration loaded and validated")
@@ -132,11 +179,15 @@ async def lifespan(app: FastAPI):
         logger.info("Application started successfully")
     except AuthConfigError as e:
         logger.error(f"Configuration error: {e}")
-        logger.error("Application startup aborted. Please check your environment variables and .env file.")
+        logger.error(
+            "Application startup aborted. Please check your environment variables and .env file."
+        )
         raise
     except Exception as e:
         logger.error(f"Failed to initialize database: {e}")
-        logger.error("Application startup aborted. Initialize DB from schema or set PKI_DB_AUTO_REINIT=true.")
+        logger.error(
+            "Application startup aborted. Initialize DB from schema or set PKI_DB_AUTO_REINIT=true."
+        )
         raise
 
     yield
@@ -166,10 +217,17 @@ async def http_exception_handler(request: Request, exc):
         # Check if this is an HTML route
         path = request.url.path
         is_html_route = (
-            path.startswith("/organizations/") and (
-                "root-ca" in path or "intermediate-ca" in path or
-                "end-entity" in path or "renew" in path or "manage" in path or "create-certificate" in path or
-                "popup" in path or "revoke" in path or "download" in path
+            path.startswith("/organizations/")
+            and (
+                "root-ca" in path
+                or "intermediate-ca" in path
+                or "end-entity" in path
+                or "renew" in path
+                or "manage" in path
+                or "create-certificate" in path
+                or "popup" in path
+                or "revoke" in path
+                or "download" in path
             )
         ) or path in {"/", "/toolbox", "/create-organization"}
 
@@ -234,7 +292,11 @@ async def auth_session_middleware(request: Request, call_next):
 
     try:
         claims = verify_session_jwt(token, settings)
-        request.state.auth = {"sub": claims.get("sub"), "exp": claims.get("exp"), "role": claims.get("role", "user")}
+        request.state.auth = {
+            "sub": claims.get("sub"),
+            "exp": claims.get("exp"),
+            "role": claims.get("role", "user"),
+        }
         request.state.role = claims.get("role", "user")
     except Exception:
         if _requires_non_html_unauthorized(path):
@@ -257,14 +319,19 @@ async def csrf_protection_middleware(request: Request, call_next):
     """
     if request.method in {"POST", "PUT", "DELETE", "PATCH"}:
         # Static files and auth endpoints are exempt
-        if request.url.path.startswith("/static/") or request.url.path in AUTH_EXEMPT_PATHS:
+        if (
+            request.url.path.startswith("/static/")
+            or request.url.path in AUTH_EXEMPT_PATHS
+        ):
             return await call_next(request)
 
         # CSRF check: either have X-Requested-With header OR valid session cookie
         # In practice, the SameSite cookie provides most of the protection
         settings: AuthSettings = request.app.state.auth_settings
         has_session_cookie = bool(request.cookies.get(settings.cookie_name, ""))
-        x_requested_with = request.headers.get("X-Requested-With", "").lower() == "xmlhttprequest"
+        x_requested_with = (
+            request.headers.get("X-Requested-With", "").lower() == "xmlhttprequest"
+        )
 
         # If no session cookie (public endpoints), require CSRF header
         if not has_session_cookie and not x_requested_with:
@@ -275,7 +342,9 @@ async def csrf_protection_middleware(request: Request, call_next):
                 request.client.host if request.client else "unknown",
             )
             return JSONResponse(
-                {"detail": "Missing required X-Requested-With header or session cookie"},
+                {
+                    "detail": "Missing required X-Requested-With header or session cookie"
+                },
                 status_code=403,
             )
 
@@ -306,7 +375,9 @@ async def security_headers_middleware(request: Request, call_next):
 
     # HSTS for HTTPS connections
     if request.url.scheme == "https":
-        response.headers["Strict-Transport-Security"] = "max-age=63072000; includeSubDomains"
+        response.headers["Strict-Transport-Security"] = (
+            "max-age=63072000; includeSubDomains"
+        )
 
     return response
 
@@ -315,6 +386,7 @@ async def security_headers_middleware(request: Request, call_next):
 def _check_role(request: Request, allowed_roles: tuple[str, ...]) -> None:
     """Check if request.state.role is in allowed_roles. Raises HTTPException if not."""
     from fastapi import HTTPException
+
     role = getattr(request.state, "role", "user")
     if role not in allowed_roles:
         raise HTTPException(status_code=403, detail="Insufficient permissions")
@@ -347,7 +419,9 @@ def require_roles_config():
     return Depends(_rbac_check)
 
 
-def _is_route_allowed_for_role(request: Request, role: str, method: str, route_path: str) -> bool:
+def _is_route_allowed_for_role(
+    request: Request, role: str, method: str, route_path: str
+) -> bool:
     """Evaluate route-level RBAC for a role (default-allow when route is missing from config)."""
     rbac = getattr(request.app.state, "rbac_config", {})
     allowed = rbac.get(f"{method.upper()} {route_path}")
@@ -359,16 +433,45 @@ def _is_route_allowed_for_role(request: Request, role: str, method: str, route_p
 def _build_ui_permissions(request: Request, role: str) -> dict[str, bool]:
     """Expose role-aware UI action availability while backend guards remain authoritative."""
     return {
-        "can_create_root": _is_route_allowed_for_role(request, role, "GET", "/organizations/{org_id}/root-ca"),
-        "can_create_intermediate": _is_route_allowed_for_role(request, role, "GET", "/organizations/{org_id}/intermediate-ca"),
-        "can_create_end_entity": _is_route_allowed_for_role(request, role, "GET", "/organizations/{org_id}/end-entity"),
-        "can_create_unified": _is_route_allowed_for_role(request, role, "GET", "/organizations/{org_id}/create-certificate"),
-        "can_renew": _is_route_allowed_for_role(request, role, "GET", "/organizations/{org_id}/certificates/{cert_id}/renew"),
-        "can_revoke": _is_route_allowed_for_role(request, role, "POST", "/organizations/{org_id}/certificates/{cert_id}/revoke"),
-        "can_download_cert": _is_route_allowed_for_role(request, role, "GET", "/organizations/{org_id}/certificates/{cert_id}/download"),
-        "can_download_private_key": _is_route_allowed_for_role(request, role, "GET", "/organizations/{org_id}/certificates/{cert_id}/private-key/plain"),
-        "can_view_popup": _is_route_allowed_for_role(request, role, "GET", "/organizations/{org_id}/certificates/{cert_id}/popup"),
-        "can_run_consistency": _is_route_allowed_for_role(request, role, "GET", "/api/check-consistency"),
+        "can_create_root": _is_route_allowed_for_role(
+            request, role, "GET", "/organizations/{org_id}/root-ca"
+        ),
+        "can_create_intermediate": _is_route_allowed_for_role(
+            request, role, "GET", "/organizations/{org_id}/intermediate-ca"
+        ),
+        "can_create_end_entity": _is_route_allowed_for_role(
+            request, role, "GET", "/organizations/{org_id}/end-entity"
+        ),
+        "can_create_unified": _is_route_allowed_for_role(
+            request, role, "GET", "/organizations/{org_id}/create-certificate"
+        ),
+        "can_renew": _is_route_allowed_for_role(
+            request, role, "GET", "/organizations/{org_id}/certificates/{cert_id}/renew"
+        ),
+        "can_revoke": _is_route_allowed_for_role(
+            request,
+            role,
+            "POST",
+            "/organizations/{org_id}/certificates/{cert_id}/revoke",
+        ),
+        "can_download_cert": _is_route_allowed_for_role(
+            request,
+            role,
+            "GET",
+            "/organizations/{org_id}/certificates/{cert_id}/download",
+        ),
+        "can_download_private_key": _is_route_allowed_for_role(
+            request,
+            role,
+            "GET",
+            "/organizations/{org_id}/certificates/{cert_id}/private-key/plain",
+        ),
+        "can_view_popup": _is_route_allowed_for_role(
+            request, role, "GET", "/organizations/{org_id}/certificates/{cert_id}/popup"
+        ),
+        "can_run_consistency": _is_route_allowed_for_role(
+            request, role, "GET", "/api/check-consistency"
+        ),
     }
 
 
@@ -492,10 +595,21 @@ def _sanitize_cert_name(cert_name: str) -> str:
 
 def _get_request_user(request: Request) -> str:
     """Extract user identity from request state for audit logging."""
-    return request.state.auth.get("sub", "unknown") if hasattr(request.state, "auth") else "unknown"
+    return (
+        request.state.auth.get("sub", "unknown")
+        if hasattr(request.state, "auth")
+        else "unknown"
+    )
 
 
-_CERT_ARTIFACT_KEYS = ("crt_path", "key_path", "csr_path", "pwd_path", "p12_path", "p12_pwd_path")
+_CERT_ARTIFACT_KEYS = (
+    "crt_path",
+    "key_path",
+    "csr_path",
+    "pwd_path",
+    "p12_path",
+    "p12_pwd_path",
+)
 
 
 def _cleanup_cert_files(ws: dict) -> None:
@@ -530,7 +644,9 @@ def _verify_cert_files_exist(ws: dict, cert_type: str | None = None) -> list[str
     return missing
 
 
-def _handle_renewal_post_commit(org: dict, org_id: int, renewal_of_cert_id: str) -> dict | None:
+def _handle_renewal_post_commit(
+    org: dict, org_id: int, renewal_of_cert_id: str
+) -> dict | None:
     """
     Post-commitment renewal handling: check for blocking subordinates, trigger audit/CRL.
     Revocation is now done atomically with the new cert creation in db layer.
@@ -549,7 +665,8 @@ def _handle_renewal_post_commit(org: dict, org_id: int, renewal_of_cert_id: str)
             if old_cert["cert_type"] == "intermediate":
                 org_certs = db.list_certificates_by_organization(org_id)
                 active_children = [
-                    c for c in org_certs
+                    c
+                    for c in org_certs
                     if c["issuer_cert_id"] == old_cert_id and c["status"] == "active"
                 ]
                 if active_children:
@@ -557,26 +674,42 @@ def _handle_renewal_post_commit(org: dict, org_id: int, renewal_of_cert_id: str)
                     return {
                         "error": "Cannot renew this certificate",
                         "message": "This certificate has active subordinate certificates. Revoke children first.",
-                        "child_certs": [{"id": c["id"], "cert_name": c["cert_name"]} for c in active_children]
+                        "child_certs": [
+                            {"id": c["id"], "cert_name": c["cert_name"]}
+                            for c in active_children
+                        ],
                     }
 
             # Audit: old cert superseded by renewal
             try:
-                db.log_certificate_operation(old_cert_id, "renewed", None, json.dumps({"superseded_by": "renewal"}))
+                db.log_certificate_operation(
+                    old_cert_id,
+                    "renewed",
+                    None,
+                    json.dumps({"superseded_by": "renewal"}),
+                )
             except Exception as e:
                 logger.warning(f"Audit log failed (non-fatal): {e}")
             if old_cert["issuer_cert_id"]:
-                issuer_cert = db.get_certificate_by_id_for_organization(old_cert["issuer_cert_id"], org_id)
+                issuer_cert = db.get_certificate_by_id_for_organization(
+                    old_cert["issuer_cert_id"], org_id
+                )
                 if issuer_cert:
-                    _trigger_crl_regeneration(org, old_cert["issuer_cert_id"], issuer_cert)
+                    _trigger_crl_regeneration(
+                        org, old_cert["issuer_cert_id"], issuer_cert
+                    )
         else:
-            logger.warning(f"Renewal attempt with non-existent cert_id {old_cert_id} for org_id {org_id}")
+            logger.warning(
+                f"Renewal attempt with non-existent cert_id {old_cert_id} for org_id {org_id}"
+            )
     except (ValueError, Exception):
         pass  # Silently ignore if subordinate check/CRL regeneration fails
     return None
 
 
-def _build_issuer_subject_map(org_dir: str, issuers: list[dict[str, str]]) -> dict[str, dict[str, str]]:
+def _build_issuer_subject_map(
+    org_dir: str, issuers: list[dict[str, str]]
+) -> dict[str, dict[str, str]]:
     subject_map: dict[str, dict[str, str]] = {}
     org_info = db.get_organization_by_dir(org_dir)
     if not org_info:
@@ -598,7 +731,10 @@ def _policy_locked_fields(policy_role: str) -> list[str]:
     locked = []
     for k in ("C", "ST", "L", "O", "OU", "CN", "email"):
         policy_key = "EMAIL" if k == "email" else k
-        if str(policy.get(f"POLICY_{policy_key}", "optional")).strip().lower() == "match":
+        if (
+            str(policy.get(f"POLICY_{policy_key}", "optional")).strip().lower()
+            == "match"
+        ):
             locked.append(k)
     return locked
 
@@ -679,17 +815,23 @@ def _validate_rbac_config() -> None:
     for key, roles in rbac.items():
         parts = key.split(" ", 1)
         if len(parts) != 2:
-            raise ValueError(f"rbac.json: invalid key format {key!r}. Expected 'METHOD /path'.")
+            raise ValueError(
+                f"rbac.json: invalid key format {key!r}. Expected 'METHOD /path'."
+            )
         method, path = parts
         if method not in _KNOWN_METHODS:
-            raise ValueError(f"rbac.json: unknown HTTP method {method!r} in key {key!r}.")
+            raise ValueError(
+                f"rbac.json: unknown HTTP method {method!r} in key {key!r}."
+            )
         if not path.startswith("/"):
             raise ValueError(f"rbac.json: path must start with '/' in key {key!r}.")
         if not isinstance(roles, list) or not roles:
             raise ValueError(f"rbac.json: roles for {key!r} must be a non-empty list.")
         for role in roles:
             if role not in _KNOWN_ROLES:
-                raise ValueError(f"rbac.json: unknown role {role!r} in key {key!r}. Known: {sorted(_KNOWN_ROLES)}.")
+                raise ValueError(
+                    f"rbac.json: unknown role {role!r} in key {key!r}. Known: {sorted(_KNOWN_ROLES)}."
+                )
 
 
 def _apply_match_policy_fields(
@@ -701,13 +843,25 @@ def _apply_match_policy_fields(
     Override subject fields according to POLICY_*=match.
     """
     out = dict(frontend_values)
-    key_map = {"C": "C", "ST": "ST", "L": "L", "O": "O", "OU": "OU", "CN": "CN", "EMAIL": "email"}
+    key_map = {
+        "C": "C",
+        "ST": "ST",
+        "L": "L",
+        "O": "O",
+        "OU": "OU",
+        "CN": "CN",
+        "EMAIL": "email",
+    }
     for policy_key, form_key in key_map.items():
-        rule = str(issuer_policy.get(f"POLICY_{policy_key}", "optional")).strip().lower()
+        rule = (
+            str(issuer_policy.get(f"POLICY_{policy_key}", "optional")).strip().lower()
+        )
         if rule == "match":
             issuer_val = issuer_subject_fields.get(form_key, "")
             if not issuer_val:
-                raise ValueError(f"Issuer is missing required field for POLICY_{policy_key}=match.")
+                raise ValueError(
+                    f"Issuer is missing required field for POLICY_{policy_key}=match."
+                )
             out[form_key] = issuer_val
     return out
 
@@ -722,7 +876,12 @@ def _run_create_cert_subprocess(params: dict) -> str:
 
         try:
             result = subprocess.run(
-                [sys.executable, str(PROJECT_ROOT / "backend" / "create_cert.py"), "--params", str(temp_path)],
+                [
+                    sys.executable,
+                    str(PROJECT_ROOT / "backend" / "create_cert.py"),
+                    "--params",
+                    str(temp_path),
+                ],
                 capture_output=True,
                 text=True,
                 check=True,
@@ -731,13 +890,19 @@ def _run_create_cert_subprocess(params: dict) -> str:
             )
             return result.stdout
         except subprocess.CalledProcessError as e:
-            logger.error(f"Certificate creation subprocess failed with exit code {e.returncode}")
+            logger.error(
+                f"Certificate creation subprocess failed with exit code {e.returncode}"
+            )
             logger.error(f"Subprocess stderr: {e.stderr}")
             logger.error(f"Subprocess stdout: {e.stdout}")
             raise
         except subprocess.TimeoutExpired as e:
-            logger.error(f"Certificate creation subprocess timed out after {SUBPROCESS_TIMEOUT}s")
-            raise TimeoutError(f"Certificate creation process timed out after {SUBPROCESS_TIMEOUT} seconds") from e
+            logger.error(
+                f"Certificate creation subprocess timed out after {SUBPROCESS_TIMEOUT}s"
+            )
+            raise TimeoutError(
+                f"Certificate creation process timed out after {SUBPROCESS_TIMEOUT} seconds"
+            ) from e
     finally:
         if temp_path and temp_path.exists():
             temp_path.unlink(missing_ok=True)
@@ -772,7 +937,7 @@ async def landing_page(request: Request):
         expiring_certs = db.get_expiring_certificates(
             days_ahead=expiration_days,
             critical_days=critical_days,
-            warning_days=warning_days
+            warning_days=warning_days,
         )
 
         return templates.TemplateResponse(
@@ -786,8 +951,8 @@ async def landing_page(request: Request):
                 "expiring_certificates": expiring_certs,
                 "expiration_days": expiration_days,
                 "warning_days": warning_days,
-                "critical_days": critical_days
-            }
+                "critical_days": critical_days,
+            },
         )
     except Exception as e:
         logger.exception("Error loading landing page")
@@ -799,17 +964,30 @@ async def landing_page(request: Request):
                 "role": getattr(request.state, "role", "user"),
                 "organizations": [],
                 "org_count": 0,
-                "stats": {"total": 0, "active": 0, "expired": 0, "revoked": 0, "superseded": 0},
+                "stats": {
+                    "total": 0,
+                    "active": 0,
+                    "expired": 0,
+                    "revoked": 0,
+                    "superseded": 0,
+                },
                 "expiring_certificates": [],
-                "error": "An unexpected error occurred. Please contact an administrator."
-            }
+                "error": "An unexpected error occurred. Please contact an administrator.",
+            },
         )
 
 
 @app.get("/toolbox", response_class=HTMLResponse, dependencies=[require_roles_config()])
-async def toolbox_page(request: Request, restore: str | None = Query(default=None), detail: str | None = Query(default=None)):
+async def toolbox_page(
+    request: Request,
+    restore: str | None = Query(default=None),
+    detail: str | None = Query(default=None),
+):
     """Toolbox landing page for future utility tools."""
-    return templates.TemplateResponse("toolbox.html", {"request": request, "restore": restore, "restore_detail": detail})
+    return templates.TemplateResponse(
+        "toolbox.html",
+        {"request": request, "restore": restore, "restore_detail": detail},
+    )
 
 
 @app.post("/create-organization", dependencies=[require_roles_config()])
@@ -832,7 +1010,9 @@ async def create_organization_endpoint(
         # Sanitize display name for folder component: lowercase, replace special chars with underscores
         sanitized_name = org_display_name.lower().replace(" ", "_").replace("-", "_")
         sanitized_name = "".join(c for c in sanitized_name if c.isalnum() or c == "_")
-        sanitized_name = sanitized_name.strip("_")  # Remove leading/trailing underscores
+        sanitized_name = sanitized_name.strip(
+            "_"
+        )  # Remove leading/trailing underscores
         if not sanitized_name:
             raise ValueError("Organization name must contain valid characters")
 
@@ -841,17 +1021,24 @@ async def create_organization_endpoint(
         # Insert organization into database first to get guaranteed unique org_id
         org_id = db.create_organization(
             org_dir="",  # Will be updated below after folder is created
-            name=org_display_name
+            name=org_display_name,
         )
 
         # Now use the returned org_id (guaranteed unique) for folder naming
-        org_name_clean = layout.org_naming_pattern.format(id=org_id, name=sanitized_name)
+        org_name_clean = layout.org_naming_pattern.format(
+            id=org_id, name=sanitized_name
+        )
         org_dir_absolute = str(get_data_dir() / org_name_clean)
 
         # Create organization folder structure using folder.py
         try:
             result = subprocess.run(
-                [sys.executable, str(PROJECT_ROOT / "backend" / "folder.py"), "init", org_name_clean],
+                [
+                    sys.executable,
+                    str(PROJECT_ROOT / "backend" / "folder.py"),
+                    "init",
+                    org_name_clean,
+                ],
                 capture_output=True,
                 text=True,
                 check=True,
@@ -859,8 +1046,12 @@ async def create_organization_endpoint(
                 timeout=SUBPROCESS_TIMEOUT,
             )
         except subprocess.TimeoutExpired:
-            logger.exception(f"Organization folder creation subprocess timed out after {SUBPROCESS_TIMEOUT}s for org_id={org_id}")
-            raise TimeoutError(f"Organization creation process timed out after {SUBPROCESS_TIMEOUT} seconds")
+            logger.exception(
+                f"Organization folder creation subprocess timed out after {SUBPROCESS_TIMEOUT}s for org_id={org_id}"
+            )
+            raise TimeoutError(
+                f"Organization creation process timed out after {SUBPROCESS_TIMEOUT} seconds"
+            )
 
         logger.info(f"Organization folders created: {org_name_clean}")
         logger.info(f"Output: {result.stdout}")
@@ -879,19 +1070,21 @@ async def create_organization_endpoint(
                 "org_name": org_dir_absolute,
                 "org_display_name": org_display_name,
                 "output": result.stdout,
-                "db_saved": True
-            }
+                "db_saved": True,
+            },
         )
 
     except SAIntegrityError as e:
-        logger.exception(f"Database integrity error during organization creation for {org_display_name}")
+        logger.exception(
+            f"Database integrity error during organization creation for {org_display_name}"
+        )
         return templates.TemplateResponse(
             "error.html",
             {
                 "request": request,
                 "error_message": f"Organization '{org_display_name}' already exists in the database.",
-                "org_name": org_display_name
-            }
+                "org_name": org_display_name,
+            },
         )
     except subprocess.CalledProcessError as e:
         logger.exception(f"Failed to create organization folders")
@@ -900,8 +1093,8 @@ async def create_organization_endpoint(
             {
                 "request": request,
                 "error_message": "Failed to create organization folders. Please contact an administrator.",
-                "org_name": org_display_name
-            }
+                "org_name": org_display_name,
+            },
         )
     except TimeoutError as e:
         logger.exception("Organization creation subprocess timed out")
@@ -910,8 +1103,8 @@ async def create_organization_endpoint(
             {
                 "request": request,
                 "error_message": "Organization creation process timed out. Please try again.",
-                "org_name": org_display_name
-            }
+                "org_name": org_display_name,
+            },
         )
     except Exception as e:
         logger.exception(f"Unexpected error during organization creation")
@@ -920,8 +1113,8 @@ async def create_organization_endpoint(
             {
                 "request": request,
                 "error_message": "An unexpected error occurred. Please contact an administrator.",
-                "org_name": org_display_name
-            }
+                "org_name": org_display_name,
+            },
         )
 
 
@@ -940,8 +1133,8 @@ async def health_check():
     """Health check endpoint with database status"""
     db_health = db.check_database_health()
     return {
-        "status": "healthy" if db_health['status'] == 'healthy' else "degraded",
-        "database": db_health
+        "status": "healthy" if db_health["status"] == "healthy" else "degraded",
+        "database": db_health,
     }
 
 
@@ -992,7 +1185,10 @@ async def download_full_backup(request: Request):
             if data_dir.exists():
                 for file_path in data_dir.rglob("*"):
                     if file_path.is_file():
-                        zf.write(file_path, arcname=Path("data") / file_path.relative_to(data_dir))
+                        zf.write(
+                            file_path,
+                            arcname=Path("data") / file_path.relative_to(data_dir),
+                        )
     except Exception as e:
         logger.error(f"Backup ZIP creation failed: {e}")
         for p in (db_tmp_path, zip_tmp_path):
@@ -1067,7 +1263,7 @@ async def restore_full_backup(request: Request, backup_file: UploadFile = File(.
                     error_msg = f"Upload exceeds {_RESTORE_MAX_UPLOAD_BYTES / (1024**3):.1f} GB limit"
                     return RedirectResponse(
                         f"/toolbox?restore=error&detail={error_msg.replace(' ', '+')}",
-                        status_code=303
+                        status_code=303,
                     )
                 upload_tmp.write(chunk)
             upload_tmp.close()
@@ -1078,8 +1274,7 @@ async def restore_full_backup(request: Request, backup_file: UploadFile = File(.
                 pass
             logger.error(f"Failed to receive backup upload: {e}")
             return RedirectResponse(
-                f"/toolbox?restore=error&detail=Upload+failed",
-                status_code=303
+                f"/toolbox?restore=error&detail=Upload+failed", status_code=303
             )
 
         # Phase 2: Validate ZIP structure
@@ -1094,42 +1289,47 @@ async def restore_full_backup(request: Request, backup_file: UploadFile = File(.
                         os.unlink(upload_tmp_path)
                     except OSError:
                         pass
-                    error_msg = f"ZIP contains too many entries (>{_RESTORE_MAX_ZIP_ENTRIES})"
+                    error_msg = (
+                        f"ZIP contains too many entries (>{_RESTORE_MAX_ZIP_ENTRIES})"
+                    )
                     return RedirectResponse(
                         f"/toolbox?restore=error&detail={error_msg.replace(' ', '+').replace('>', '%3E')}",
-                        status_code=303
+                        status_code=303,
                     )
 
                 # Validate each entry
                 for info in zf.infolist():
                     # Path traversal guard
-                    if info.filename.startswith('/') or '..' in Path(info.filename).parts:
+                    if (
+                        info.filename.startswith("/")
+                        or ".." in Path(info.filename).parts
+                    ):
                         try:
                             os.unlink(upload_tmp_path)
                         except OSError:
                             pass
                         return RedirectResponse(
                             "/toolbox?restore=error&detail=Invalid+path+in+ZIP",
-                            status_code=303
+                            status_code=303,
                         )
 
                     # Check first path component
                     parts = Path(info.filename).parts
-                    if parts and parts[0] not in ('pki.db', 'data'):
+                    if parts and parts[0] not in ("pki.db", "data"):
                         try:
                             os.unlink(upload_tmp_path)
                         except OSError:
                             pass
                         return RedirectResponse(
                             "/toolbox?restore=error&detail=Unexpected+files+in+ZIP",
-                            status_code=303
+                            status_code=303,
                         )
 
                     # Track uncompressed size
                     total_uncompressed += info.file_size
 
                     # Track pki.db
-                    if info.filename == 'pki.db':
+                    if info.filename == "pki.db":
                         has_pki_db = True
 
                 # Check uncompressed size limit
@@ -1141,7 +1341,7 @@ async def restore_full_backup(request: Request, backup_file: UploadFile = File(.
                     error_msg = f"Uncompressed size exceeds {_RESTORE_MAX_UNCOMPRESSED_BYTES / (1024**3):.1f} GB"
                     return RedirectResponse(
                         f"/toolbox?restore=error&detail={error_msg.replace(' ', '+')}",
-                        status_code=303
+                        status_code=303,
                     )
 
                 # Check for pki.db
@@ -1152,7 +1352,7 @@ async def restore_full_backup(request: Request, backup_file: UploadFile = File(.
                         pass
                     return RedirectResponse(
                         "/toolbox?restore=error&detail=Missing+pki.db+in+ZIP",
-                        status_code=303
+                        status_code=303,
                     )
         except zipfile.BadZipFile:
             try:
@@ -1160,8 +1360,7 @@ async def restore_full_backup(request: Request, backup_file: UploadFile = File(.
             except OSError:
                 pass
             return RedirectResponse(
-                "/toolbox?restore=error&detail=Invalid+ZIP+file",
-                status_code=303
+                "/toolbox?restore=error&detail=Invalid+ZIP+file", status_code=303
             )
         except Exception as e:
             try:
@@ -1170,8 +1369,7 @@ async def restore_full_backup(request: Request, backup_file: UploadFile = File(.
                 pass
             logger.error(f"ZIP validation failed: {e}")
             return RedirectResponse(
-                "/toolbox?restore=error&detail=ZIP+validation+failed",
-                status_code=303
+                "/toolbox?restore=error&detail=ZIP+validation+failed", status_code=303
             )
 
         # Phase 3: Validate pki.db
@@ -1196,19 +1394,20 @@ async def restore_full_backup(request: Request, backup_file: UploadFile = File(.
             logger.error(f"Failed to extract pki.db: {e}")
             return RedirectResponse(
                 "/toolbox?restore=error&detail=Failed+to+extract+database",
-                status_code=303
+                status_code=303,
             )
 
         # Validate database integrity and schema version
         try:
-            conn = sqlite3.connect(f"file:{restore_db_tmp_path}?mode=ro&uri=true")
+            db_uri = Path(restore_db_tmp_path).as_uri() + "?mode=ro"
+            conn = sqlite3.connect(db_uri, uri=True)
             try:
                 cursor = conn.cursor()
 
                 # Check integrity
                 cursor.execute("PRAGMA integrity_check")
                 result = cursor.fetchone()
-                if not result or result[0] != 'ok':
+                if not result or result[0] != "ok":
                     try:
                         os.unlink(restore_db_tmp_path)
                     except OSError:
@@ -1219,11 +1418,13 @@ async def restore_full_backup(request: Request, backup_file: UploadFile = File(.
                         pass
                     return RedirectResponse(
                         "/toolbox?restore=error&detail=Database+integrity+check+failed",
-                        status_code=303
+                        status_code=303,
                     )
 
                 # Check schema version
-                cursor.execute("SELECT version FROM schema_version ORDER BY applied_at DESC LIMIT 1")
+                cursor.execute(
+                    "SELECT version FROM schema_version ORDER BY applied_at DESC LIMIT 1"
+                )
                 version_row = cursor.fetchone()
                 if not version_row or version_row[0] != db.SCHEMA_VERSION:
                     try:
@@ -1236,7 +1437,7 @@ async def restore_full_backup(request: Request, backup_file: UploadFile = File(.
                         pass
                     return RedirectResponse(
                         "/toolbox?restore=error&detail=Database+schema+version+mismatch",
-                        status_code=303
+                        status_code=303,
                     )
             finally:
                 conn.close()
@@ -1252,7 +1453,7 @@ async def restore_full_backup(request: Request, backup_file: UploadFile = File(.
             logger.error(f"Database validation failed: {e}")
             return RedirectResponse(
                 "/toolbox?restore=error&detail=Database+validation+failed",
-                status_code=303
+                status_code=303,
             )
 
         # Phase 4: Extract data/ to staging
@@ -1267,16 +1468,16 @@ async def restore_full_backup(request: Request, backup_file: UploadFile = File(.
             data_restore_tmp.mkdir(parents=True, exist_ok=True)
             with zipfile.ZipFile(upload_tmp_path, "r") as zf:
                 for info in zf.infolist():
-                    if info.filename.startswith('data/'):
+                    if info.filename.startswith("data/"):
                         # Strip 'data/' prefix
                         rel_path = info.filename[5:]
                         if rel_path:  # Skip the 'data/' directory entry itself
                             target = data_restore_tmp / rel_path
-                            if info.filename.endswith('/'):
+                            if info.filename.endswith("/"):
                                 target.mkdir(parents=True, exist_ok=True)
                             else:
                                 target.parent.mkdir(parents=True, exist_ok=True)
-                                with zf.open(info) as src, open(target, 'wb') as dst:
+                                with zf.open(info) as src, open(target, "wb") as dst:
                                     shutil.copyfileobj(src, dst)
         except Exception as e:
             try:
@@ -1293,8 +1494,7 @@ async def restore_full_backup(request: Request, backup_file: UploadFile = File(.
                 pass
             logger.error(f"Failed to extract data directory: {e}")
             return RedirectResponse(
-                "/toolbox?restore=error&detail=Failed+to+extract+data",
-                status_code=303
+                "/toolbox?restore=error&detail=Failed+to+extract+data", status_code=303
             )
 
         # Phase 5: Atomic DB swap (point of no return begins)
@@ -1324,8 +1524,7 @@ async def restore_full_backup(request: Request, backup_file: UploadFile = File(.
 
             logger.error(f"Database swap failed: {e}")
             return RedirectResponse(
-                "/toolbox?restore=error&detail=Database+swap+failed",
-                status_code=303
+                "/toolbox?restore=error&detail=Database+swap+failed", status_code=303
             )
 
         # Phase 6: Atomic data/ swap (handles mounted volumes)
@@ -1388,12 +1587,11 @@ async def restore_full_backup(request: Request, backup_file: UploadFile = File(.
             # DB is already swapped (consistent)
             logger.error(f"Data swap failed: {e}")
             return RedirectResponse(
-                "/toolbox?restore=error&detail=Data+swap+failed",
-                status_code=303
+                "/toolbox?restore=error&detail=Data+swap+failed", status_code=303
             )
 
         # Phase 7: Cleanup
-        db_old_exists = db_old.exists() if 'db_old' in locals() else False
+        db_old_exists = db_old.exists() if "db_old" in locals() else False
         if db_old_exists:
             try:
                 os.unlink(db_old)
@@ -1420,7 +1618,10 @@ async def restore_full_backup(request: Request, backup_file: UploadFile = File(.
 
     except Exception as e:
         # Unexpected error - best effort cleanup
-        for tmp_path in [upload_tmp_path if upload_tmp else None, restore_db_tmp_path if restore_db_tmp else None]:
+        for tmp_path in [
+            upload_tmp_path if upload_tmp else None,
+            restore_db_tmp_path if restore_db_tmp else None,
+        ]:
             if tmp_path:
                 try:
                     os.unlink(tmp_path)
@@ -1435,8 +1636,7 @@ async def restore_full_backup(request: Request, backup_file: UploadFile = File(.
 
         logger.error(f"Unexpected error during restore: {e}", exc_info=True)
         return RedirectResponse(
-            "/toolbox?restore=error&detail=Unexpected+error",
-            status_code=303
+            "/toolbox?restore=error&detail=Unexpected+error", status_code=303
         )
 
 
@@ -1445,19 +1645,17 @@ async def list_all_organizations():
     """List all organizations from the database"""
     try:
         organizations = db.list_organizations()
-        return {
-            "count": len(organizations),
-            "organizations": organizations
-        }
+        return {"count": len(organizations), "organizations": organizations}
     except Exception as e:
         logger.error(f"Failed to list organizations: {e}")
-        return {
-            "error": str(e),
-            "organizations": []
-        }
+        return {"error": str(e), "organizations": []}
 
 
-@app.get("/organizations/{org_id}/manage", response_class=HTMLResponse, dependencies=[require_roles_config()])
+@app.get(
+    "/organizations/{org_id}/manage",
+    response_class=HTMLResponse,
+    dependencies=[require_roles_config()],
+)
 async def manage_organization(request: Request, org_id: int):
     """
     Manage organization page - shows dashboard with organization statistics.
@@ -1500,7 +1698,9 @@ async def manage_organization(request: Request, org_id: int):
                 "hierarchy": hierarchy,
                 "root_ca_exists": root_ca_exists,
                 "role": getattr(request.state, "role", "user"),
-                "ui_permissions": _build_ui_permissions(request, getattr(request.state, "role", "user")),
+                "ui_permissions": _build_ui_permissions(
+                    request, getattr(request.state, "role", "user")
+                ),
                 "expiration_days": expiration_days,
                 "warning_days": warning_days,
                 "critical_days": critical_days,
@@ -1518,7 +1718,11 @@ async def manage_organization(request: Request, org_id: int):
         )
 
 
-@app.get("/organizations/{org_id}/create-certificate", response_class=HTMLResponse, dependencies=[require_roles_config()])
+@app.get(
+    "/organizations/{org_id}/create-certificate",
+    response_class=HTMLResponse,
+    dependencies=[require_roles_config()],
+)
 async def create_certificate_page(request: Request, org_id: int):
     """Unified certificate creation page with root/intermediate/end-entity modes."""
     org = db.get_organization_by_id(org_id)
@@ -1541,8 +1745,17 @@ async def create_certificate_page(request: Request, org_id: int):
     if root_ca:
         layout = PkiLayout()
         root_cert = db.get_latest_certificate_by_name_and_type(org_id, root_ca, "root")
-        root_artifact = root_cert["cert_uuid"] if root_cert and root_cert.get("cert_uuid") else root_ca
-        cert_path = _resolve_org_path(org["org_dir"]) / layout.root_dirname / layout.certs_dirname / f"{root_artifact}.pem.enc"
+        root_artifact = (
+            root_cert["cert_uuid"]
+            if root_cert and root_cert.get("cert_uuid")
+            else root_ca
+        )
+        cert_path = (
+            _resolve_org_path(org["org_dir"])
+            / layout.root_dirname
+            / layout.certs_dirname
+            / f"{root_artifact}.pem.enc"
+        )
         if cert_path.exists():
             issuer_subject_fields = _read_cert_subject_fields(cert_path)
         locked_fields_intermediate = _policy_locked_fields("root")
@@ -1577,7 +1790,9 @@ async def create_certificate_page(request: Request, org_id: int):
             "default_days_intermediate": int(intermediate_policy["DEFAULT_DAYS"]),
             "default_days_end_entity": int(server_policy["DEFAULT_DAYS"]),
             "default_curve_root": root_policy.get("ec_curve", "secp384r1"),
-            "default_curve_intermediate": intermediate_policy.get("ec_curve", "secp384r1"),
+            "default_curve_intermediate": intermediate_policy.get(
+                "ec_curve", "secp384r1"
+            ),
             "default_curve_end_entity": server_policy.get("ec_curve", "secp256r1"),
             "end_entity_policies": {
                 "server": {
@@ -1601,7 +1816,11 @@ async def create_certificate_page(request: Request, org_id: int):
     )
 
 
-@app.get("/organizations/{org_id}/certificates/{cert_id}/popup", response_class=HTMLResponse, dependencies=[require_roles_config()])
+@app.get(
+    "/organizations/{org_id}/certificates/{cert_id}/popup",
+    response_class=HTMLResponse,
+    dependencies=[require_roles_config()],
+)
 async def certificate_popup(request: Request, org_id: int, cert_id: int):
     """
     Popup page with certificate record details.
@@ -1630,7 +1849,11 @@ async def certificate_popup(request: Request, org_id: int, cert_id: int):
 
     # Read SANs from DB
     db_sans = db.list_sans(cert_id)
-    san_str = ", ".join(f"{s['san_type']}:{s['san_value']}" for s in db_sans) if db_sans else "-"
+    san_str = (
+        ", ".join(f"{s['san_type']}:{s['san_value']}" for s in db_sans)
+        if db_sans
+        else "-"
+    )
 
     # Get additional extension data for template (may be None for legacy certs)
     basic_constraints = db.get_basic_constraints(cert_id)
@@ -1662,7 +1885,11 @@ async def certificate_popup(request: Request, org_id: int, cert_id: int):
     )
 
 
-@app.get("/organizations/{org_id}/certificates/{cert_id}/renew", response_class=HTMLResponse, dependencies=[require_roles_config()])
+@app.get(
+    "/organizations/{org_id}/certificates/{cert_id}/renew",
+    response_class=HTMLResponse,
+    dependencies=[require_roles_config()],
+)
 async def renew_certificate_page(request: Request, org_id: int, cert_id: int):
     """
     Renewal page: pre-fills all certificate data from the original,
@@ -1700,13 +1927,21 @@ async def renew_certificate_page(request: Request, org_id: int, cert_id: int):
 
     # Read SANs from database
     db_sans = db.list_sans(cert_id)
-    san_str = ", ".join(f"{s['san_type']}:{s['san_value']}" for s in db_sans) if db_sans else ""
+    san_str = (
+        ", ".join(f"{s['san_type']}:{s['san_value']}" for s in db_sans)
+        if db_sans
+        else ""
+    )
 
     # Look up issuer name for end-entity certs
     issuer_name = None
     issuer_type = None
-    if cert_type in ("server", "client", "email", "ocsp") and cert.get("issuer_cert_id"):
-        issuer_cert = db.get_certificate_by_id_for_organization(cert["issuer_cert_id"], org_id)
+    if cert_type in ("server", "client", "email", "ocsp") and cert.get(
+        "issuer_cert_id"
+    ):
+        issuer_cert = db.get_certificate_by_id_for_organization(
+            cert["issuer_cert_id"], org_id
+        )
         if issuer_cert:
             issuer_name = issuer_cert["cert_name"]
             issuer_type = issuer_cert["cert_type"]
@@ -1733,7 +1968,9 @@ async def renew_certificate_page(request: Request, org_id: int, cert_id: int):
 
 
 @app.get("/organizations/{org_id}/crl/{issuer_name}")
-async def download_crl(org_id: int, issuer_name: str, issuer_cert_id: int | None = Query(default=None)):
+async def download_crl(
+    org_id: int, issuer_name: str, issuer_cert_id: int | None = Query(default=None)
+):
     """
     Serve latest CRL file for an issuer scoped to one organization.
     """
@@ -1764,7 +2001,9 @@ async def download_crl(org_id: int, issuer_name: str, issuer_cert_id: int | None
     return Response(
         content=crl_content,
         media_type="application/pkix-crl",
-        headers={"Content-Disposition": f'attachment; filename="{issuer_name}.crl.pem"'},
+        headers={
+            "Content-Disposition": f'attachment; filename="{issuer_name}.crl.pem"'
+        },
     )
 
 
@@ -1773,11 +2012,15 @@ def _select_preferred_crl_issuer(org_id: int) -> str | None:
     Prefer active intermediate CA CRL, fallback to active root CA CRL.
     """
     certs = db.list_certificates_by_organization(org_id)
-    active_intermediates = [c for c in certs if c["cert_type"] == "intermediate" and c["status"] == "active"]
+    active_intermediates = [
+        c for c in certs if c["cert_type"] == "intermediate" and c["status"] == "active"
+    ]
     if active_intermediates:
         return active_intermediates[0]["cert_name"]
 
-    active_roots = [c for c in certs if c["cert_type"] == "root" and c["status"] == "active"]
+    active_roots = [
+        c for c in certs if c["cert_type"] == "root" and c["status"] == "active"
+    ]
     if active_roots:
         return active_roots[0]["cert_name"]
     return None
@@ -1829,7 +2072,8 @@ def _resolve_issuer_crl_path(org: dict, org_id: int, issuer_name: str) -> Path |
     org_dir = _resolve_org_path(org["org_dir"])
     certs = db.list_certificates_by_organization(org_id)
     issuer_candidates = [
-        c for c in certs
+        c
+        for c in certs
         if c["cert_name"] == issuer_name and c["cert_type"] in ("root", "intermediate")
     ]
     for issuer in issuer_candidates:
@@ -1838,7 +2082,13 @@ def _resolve_issuer_crl_path(org: dict, org_id: int, issuer_name: str) -> Path |
             path = org_dir / layout.root_dirname / "crl" / f"{artifact}.crl.pem.enc"
         else:
             # Intermediate folders use cert_name, files use UUID
-            path = org_dir / layout.intermediates_dirname / issuer["cert_name"] / "crl" / f"{artifact}.crl.pem.enc"
+            path = (
+                org_dir
+                / layout.intermediates_dirname
+                / issuer["cert_name"]
+                / "crl"
+                / f"{artifact}.crl.pem.enc"
+            )
         if path.exists():
             return path
     return None
@@ -1861,13 +2111,23 @@ def _resolve_crl_path_for_cert(org: dict, cert: dict) -> Path | None:
         path = org_dir / layout.root_dirname / "crl" / f"{artifact}.crl.pem.enc"
     elif cert["cert_type"] == "intermediate":
         # Intermediate folders use cert_name, files use UUID
-        path = org_dir / layout.intermediates_dirname / cert["cert_name"] / "crl" / f"{artifact}.crl.pem.enc"
+        path = (
+            org_dir
+            / layout.intermediates_dirname
+            / cert["cert_name"]
+            / "crl"
+            / f"{artifact}.crl.pem.enc"
+        )
     else:
         return None
     return path if path.exists() else None
 
 
-@app.get("/api/organizations/{org_id}/crls", response_model=list[dict], dependencies=[require_roles_config()])
+@app.get(
+    "/api/organizations/{org_id}/crls",
+    response_model=list[dict],
+    dependencies=[require_roles_config()],
+)
 async def list_organization_crls(org_id: int):
     """
     List all available CRL issuers for an organization.
@@ -1886,7 +2146,11 @@ async def list_organization_crls(org_id: int):
         has_crl = bool(crl_path and crl_path.exists())
 
         # Count revoked certificates issued by this issuer
-        revoked_count = sum(1 for c in certs if c["issuer_cert_id"] == issuer["id"] and c["status"] == "revoked")
+        revoked_count = sum(
+            1
+            for c in certs
+            if c["issuer_cert_id"] == issuer["id"] and c["status"] == "revoked"
+        )
 
         # Get last updated timestamp from CRL file
         last_updated = None
@@ -1894,20 +2158,23 @@ async def list_organization_crls(org_id: int):
             try:
                 mtime = crl_path.stat().st_mtime
                 from datetime import datetime
+
                 last_updated = datetime.fromtimestamp(mtime).isoformat()
             except Exception:
                 pass
 
-        result.append({
-            "issuer_name": issuer["cert_name"],
-            "cert_type": issuer["cert_type"],
-            "cert_id": issuer["id"],
-            "issuer_status": issuer.get("status", "unknown"),
-            "has_crl": has_crl,
-            "download_url": f"/organizations/{org_id}/crl/{issuer['cert_name']}",
-            "revoked_count": revoked_count,
-            "last_updated": last_updated
-        })
+        result.append(
+            {
+                "issuer_name": issuer["cert_name"],
+                "cert_type": issuer["cert_type"],
+                "cert_id": issuer["id"],
+                "issuer_status": issuer.get("status", "unknown"),
+                "has_crl": has_crl,
+                "download_url": f"/organizations/{org_id}/crl/{issuer['cert_name']}",
+                "revoked_count": revoked_count,
+                "last_updated": last_updated,
+            }
+        )
     return result
 
 
@@ -1928,17 +2195,23 @@ async def download_org_crl(org_id: int):
                 content=f"No CRL available yet for issuer '{preferred}'. Revoke a certificate first.",
                 status_code=404,
             )
-        return Response(content="No active issuer found for CRL download", status_code=404)
+        return Response(
+            content="No active issuer found for CRL download", status_code=404
+        )
 
     crl_path = _resolve_issuer_crl_path(org, org_id, issuer_name)
     if not crl_path:
-        return Response(content="No CRL available for preferred issuer", status_code=404)
+        return Response(
+            content="No CRL available for preferred issuer", status_code=404
+        )
 
     crl_content = file_crypto.read_encrypted(crl_path)
     return Response(
         content=crl_content,
         media_type="application/pkix-crl",
-        headers={"Content-Disposition": f'attachment; filename="{issuer_name}.crl.pem"'},
+        headers={
+            "Content-Disposition": f'attachment; filename="{issuer_name}.crl.pem"'
+        },
     )
 
 
@@ -1958,20 +2231,29 @@ async def download_org_crl_bundle(org_id: int):
     issuers = [c for c in certs if c["cert_type"] == "intermediate"]
     issuers += [c for c in certs if c["cert_type"] == "root"]
 
-    logger.info(f"CRL Bundle: Found {len(issuers)} total issuers (intermediates + roots) for org_id={org_id}")
+    logger.info(
+        f"CRL Bundle: Found {len(issuers)} total issuers (intermediates + roots) for org_id={org_id}"
+    )
 
     crl_pems: list[bytes] = []
     for issuer in issuers:
         crl_path = _resolve_crl_path_for_cert(org, issuer)
-        logger.info(f"CRL Bundle: Issuer '{issuer['cert_name']}' (id={issuer['id']}) -> path={crl_path}, exists={crl_path.exists() if crl_path else False}")
+        logger.info(
+            f"CRL Bundle: Issuer '{issuer['cert_name']}' (id={issuer['id']}) -> path={crl_path}, exists={crl_path.exists() if crl_path else False}"
+        )
         if crl_path and crl_path.exists():
             crl_pems.append(file_crypto.read_encrypted(crl_path).strip())
             logger.info(f"CRL Bundle: Added CRL for '{issuer['cert_name']}'")
 
-    logger.info(f"CRL Bundle: Collected {len(crl_pems)} CRLs out of {len(issuers)} issuers")
+    logger.info(
+        f"CRL Bundle: Collected {len(crl_pems)} CRLs out of {len(issuers)} issuers"
+    )
 
     if not crl_pems:
-        return Response(content="No CRLs available yet. Revoke a certificate first.", status_code=404)
+        return Response(
+            content="No CRLs available yet. Revoke a certificate first.",
+            status_code=404,
+        )
 
     bundle = b"\n\n".join(crl_pems) + b"\n"
     return Response(
@@ -1981,8 +2263,13 @@ async def download_org_crl_bundle(org_id: int):
     )
 
 
-@app.get("/organizations/{org_id}/certificates/{cert_id}/download", dependencies=[require_roles_config()])
-async def download_certificate(request: Request, org_id: int, cert_id: int, format: str = "pem"):
+@app.get(
+    "/organizations/{org_id}/certificates/{cert_id}/download",
+    dependencies=[require_roles_config()],
+)
+async def download_certificate(
+    request: Request, org_id: int, cert_id: int, format: str = "pem"
+):
     """
     Download certificate artifact in one of: pem, p12, chain.
     """
@@ -2012,12 +2299,17 @@ async def download_certificate(request: Request, org_id: int, cert_id: int, form
         return Response(
             content=pem_content,
             media_type="application/x-pem-file",
-            headers={"Content-Disposition": f'attachment; filename="{cert["cert_name"]}.pem"'},
+            headers={
+                "Content-Disposition": f'attachment; filename="{cert["cert_name"]}.pem"'
+            },
         )
 
     if fmt == "p12":
         if cert["cert_type"] not in ("client", "email"):
-            return Response(content="PKCS12 is only available for client/email certificates", status_code=400)
+            return Response(
+                content="PKCS12 is only available for client/email certificates",
+                status_code=400,
+            )
         # P12 path: replace .pem.enc with .p12.enc
         cert_path_str = cert["cert_path"]
         p12_rel = cert_path_str.replace(".pem.enc", ".p12.enc")
@@ -2035,13 +2327,17 @@ async def download_certificate(request: Request, org_id: int, cert_id: int, form
         return Response(
             content=p12_content,
             media_type="application/x-pkcs12",
-            headers={"Content-Disposition": f'attachment; filename="{cert["cert_name"]}.p12"'},
+            headers={
+                "Content-Disposition": f'attachment; filename="{cert["cert_name"]}.p12"'
+            },
         )
 
     if fmt == "chain":
         chain_content = _build_certificate_chain_pem(org, cert, org_id)
         if chain_content is None:
-            return Response(content="Unable to build certificate chain", status_code=500)
+            return Response(
+                content="Unable to build certificate chain", status_code=500
+            )
         # Audit: chain download
         user_name = _get_request_user(request)
         try:
@@ -2051,29 +2347,45 @@ async def download_certificate(request: Request, org_id: int, cert_id: int, form
         return Response(
             content=chain_content,
             media_type="application/x-pem-file",
-            headers={"Content-Disposition": f'attachment; filename="chain_{cert_id}.pem"'},
+            headers={
+                "Content-Disposition": f'attachment; filename="chain_{cert_id}.pem"'
+            },
         )
 
     if fmt == "full_chain":
-        chain_content = _build_certificate_chain_pem(org, cert, org_id, include_root=True)
+        chain_content = _build_certificate_chain_pem(
+            org, cert, org_id, include_root=True
+        )
         if chain_content is None:
-            return Response(content="Unable to build certificate chain", status_code=500)
+            return Response(
+                content="Unable to build certificate chain", status_code=500
+            )
         # Audit: full chain download (including root)
         user_name = _get_request_user(request)
         try:
-            db.log_certificate_operation(cert_id, "downloaded_full_chain", user_name, None)
+            db.log_certificate_operation(
+                cert_id, "downloaded_full_chain", user_name, None
+            )
         except Exception as e:
             logger.warning(f"Audit log failed (non-fatal): {e}")
         return Response(
             content=chain_content,
             media_type="application/x-pem-file",
-            headers={"Content-Disposition": f'attachment; filename="chain_{cert_id}.pem"'},
+            headers={
+                "Content-Disposition": f'attachment; filename="chain_{cert_id}.pem"'
+            },
         )
 
-    return Response(content="Unsupported format. Use pem, p12, chain, or full_chain.", status_code=400)
+    return Response(
+        content="Unsupported format. Use pem, p12, chain, or full_chain.",
+        status_code=400,
+    )
 
 
-@app.get("/organizations/{org_id}/certificates/{cert_id}/p12-password", dependencies=[require_roles_config()])
+@app.get(
+    "/organizations/{org_id}/certificates/{cert_id}/p12-password",
+    dependencies=[require_roles_config()],
+)
 async def get_p12_password(request: Request, org_id: int, cert_id: int):
     """Return the PKCS12 password for a client/email certificate."""
     org = db.get_organization_by_id(org_id)
@@ -2085,7 +2397,10 @@ async def get_p12_password(request: Request, org_id: int, cert_id: int):
         return Response(content="Certificate not found", status_code=404)
 
     if cert["cert_type"] not in ("client", "email"):
-        return Response(content="PKCS12 is only available for client/email certificates", status_code=400)
+        return Response(
+            content="PKCS12 is only available for client/email certificates",
+            status_code=400,
+        )
 
     org_dir = _resolve_org_path(org["org_dir"])
     # Derive password path: certs/{base}.pem.enc → private/{base}.p12.pwd.enc
@@ -2113,7 +2428,10 @@ async def get_p12_password(request: Request, org_id: int, cert_id: int):
     return {"password": password, "cert_name": cert["cert_name"]}
 
 
-@app.get("/organizations/{org_id}/certificates/{cert_id}/private-key/plain", dependencies=[require_roles_config()])
+@app.get(
+    "/organizations/{org_id}/certificates/{cert_id}/private-key/plain",
+    dependencies=[require_roles_config()],
+)
 async def download_unencrypted_server_private_key(org_id: int, cert_id: int):
     """
     Download unencrypted PEM private key for server certificates only.
@@ -2127,7 +2445,10 @@ async def download_unencrypted_server_private_key(org_id: int, cert_id: int):
         return Response(content="Certificate not found", status_code=404)
 
     if cert["cert_type"] != "server":
-        return Response(content="Unencrypted private key download is only available for server certificates", status_code=400)
+        return Response(
+            content="Unencrypted private key download is only available for server certificates",
+            status_code=400,
+        )
 
     org_dir = _resolve_org_path(org["org_dir"])
     key_path = org_dir / cert["key_path"]
@@ -2156,11 +2477,15 @@ async def download_unencrypted_server_private_key(org_id: int, cert_id: int):
     return Response(
         content=plain_pem,
         media_type="application/x-pem-file",
-        headers={"Content-Disposition": f'attachment; filename="{cert["cert_name"]}.key.pem"'},
+        headers={
+            "Content-Disposition": f'attachment; filename="{cert["cert_name"]}.key.pem"'
+        },
     )
 
 
-def _build_certificate_chain_pem(org: dict, cert: dict, org_id: int, include_root: bool = False) -> bytes | None:
+def _build_certificate_chain_pem(
+    org: dict, cert: dict, org_id: int, include_root: bool = False
+) -> bytes | None:
     chain_pems: list[bytes] = []
     current = cert
     visited_ids: set[int] = set()
@@ -2203,7 +2528,10 @@ def _build_certificate_chain_pem(org: dict, cert: dict, org_id: int, include_roo
 # Helper: CRL Regeneration
 # ============================================================================
 
-def _trigger_crl_regeneration(org: dict, issuer_id: int, issuer_cert: dict, root_user_password: str | None = None) -> None:
+
+def _trigger_crl_regeneration(
+    org: dict, issuer_id: int, issuer_cert: dict, root_user_password: str | None = None
+) -> None:
     """
     Trigger CRL regeneration for an issuer after revocation.
     Handles subprocess call, CRL parsing, and DB persistence.
@@ -2217,7 +2545,8 @@ def _trigger_crl_regeneration(org: dict, issuer_id: int, issuer_cert: dict, root
     params = {
         "org_dir": org_dir,
         "issuer_name": issuer_cert["cert_name"],
-        "issuer_artifact_name": issuer_cert.get("cert_uuid") or issuer_cert["cert_name"],
+        "issuer_artifact_name": issuer_cert.get("cert_uuid")
+        or issuer_cert["cert_name"],
         "issuer_type": issuer_type,
         "revoked_certs": revoked_certs,
     }
@@ -2235,46 +2564,84 @@ def _trigger_crl_regeneration(org: dict, issuer_id: int, issuer_cert: dict, root
 
         try:
             result = subprocess.run(
-                [sys.executable, str(PROJECT_ROOT / "backend" / "revoke_cert_crypto.py"), "--params", str(temp_path)],
+                [
+                    sys.executable,
+                    str(PROJECT_ROOT / "backend" / "revoke_cert_crypto.py"),
+                    "--params",
+                    str(temp_path),
+                ],
                 capture_output=True,
                 text=True,
                 cwd=PROJECT_ROOT,
                 timeout=SUBPROCESS_TIMEOUT,
             )
         except subprocess.TimeoutExpired:
-            logger.exception(f"CRL generation subprocess timed out after {SUBPROCESS_TIMEOUT}s for issuer_id={issuer_id}")
-            raise TimeoutError(f"CRL generation process timed out after {SUBPROCESS_TIMEOUT} seconds")
+            logger.exception(
+                f"CRL generation subprocess timed out after {SUBPROCESS_TIMEOUT}s for issuer_id={issuer_id}"
+            )
+            raise TimeoutError(
+                f"CRL generation process timed out after {SUBPROCESS_TIMEOUT} seconds"
+            )
 
         if result.returncode == 0:
             # CRL generation succeeded, persist CRL metadata to database
             try:
                 # Build CRL file path (mirrors revoke_cert_crypto.py resolve_issuer_paths logic)
                 layout = PkiLayout()
-                issuer_artifact_name = issuer_cert.get("cert_uuid") or issuer_cert["cert_name"]
+                issuer_artifact_name = (
+                    issuer_cert.get("cert_uuid") or issuer_cert["cert_name"]
+                )
                 if issuer_type == "root":
-                    crl_file = _resolve_org_path(org_dir) / layout.root_dirname / "crl" / f"{issuer_artifact_name}.crl.pem.enc"
+                    crl_file = (
+                        _resolve_org_path(org_dir)
+                        / layout.root_dirname
+                        / "crl"
+                        / f"{issuer_artifact_name}.crl.pem.enc"
+                    )
                 else:
                     # Intermediate folders use cert_name, files use UUID
-                    crl_file = _resolve_org_path(org_dir) / layout.intermediates_dirname / issuer_cert["cert_name"] / "crl" / f"{issuer_artifact_name}.crl.pem.enc"
+                    crl_file = (
+                        _resolve_org_path(org_dir)
+                        / layout.intermediates_dirname
+                        / issuer_cert["cert_name"]
+                        / "crl"
+                        / f"{issuer_artifact_name}.crl.pem.enc"
+                    )
 
                 if crl_file.exists():
-                    parsed_crl = x509.load_pem_x509_crl(file_crypto.read_encrypted(crl_file))
-                    this_update = parsed_crl.last_update_utc.strftime("%Y-%m-%d %H:%M:%S")
-                    next_update = parsed_crl.next_update_utc.strftime("%Y-%m-%d %H:%M:%S") if parsed_crl.next_update_utc else this_update
+                    parsed_crl = x509.load_pem_x509_crl(
+                        file_crypto.read_encrypted(crl_file)
+                    )
+                    this_update = parsed_crl.last_update_utc.strftime(
+                        "%Y-%m-%d %H:%M:%S"
+                    )
+                    next_update = (
+                        parsed_crl.next_update_utc.strftime("%Y-%m-%d %H:%M:%S")
+                        if parsed_crl.next_update_utc
+                        else this_update
+                    )
 
                     # Get new CRL number
                     crl_number = db.get_latest_crl_number_for_issuer(issuer_id) + 1
 
                     # Insert CRL record
-                    crl_id = db.create_crl(issuer_id, crl_number, this_update, next_update, str(crl_file))
+                    crl_id = db.create_crl(
+                        issuer_id, crl_number, this_update, next_update, str(crl_file)
+                    )
 
                     # Insert revoked certificate entries for this CRL
                     revoked_rows = db.get_revoked_certs_for_issuer(issuer_id)
-                    db.bulk_insert_revoked_certificate_entries(crl_id, [
-                        {"certificate_id": r["id"], "revocation_date": r["revoked_at"],
-                         "revocation_reason": r["revocation_reason"]}
-                        for r in revoked_rows
-                    ])
+                    db.bulk_insert_revoked_certificate_entries(
+                        crl_id,
+                        [
+                            {
+                                "certificate_id": r["id"],
+                                "revocation_date": r["revoked_at"],
+                                "revocation_reason": r["revocation_reason"],
+                            }
+                            for r in revoked_rows
+                        ],
+                    )
 
                     # Audit: CRL generated
                     try:
@@ -2325,10 +2692,16 @@ async def root_ca_page(request: Request, org_id: int):
             },
         )
 
-    return RedirectResponse(f"/organizations/{org_id}/create-certificate", status_code=302)
+    return RedirectResponse(
+        f"/organizations/{org_id}/create-certificate", status_code=302
+    )
 
 
-@app.post("/organizations/{org_id}/root-ca", response_class=HTMLResponse, dependencies=[require_roles_config()])
+@app.post(
+    "/organizations/{org_id}/root-ca",
+    response_class=HTMLResponse,
+    dependencies=[require_roles_config()],
+)
 async def create_root_ca(
     request: Request,
     org_id: int,
@@ -2433,11 +2806,17 @@ async def create_root_ca(
             if old_cert and old_cert["cert_type"] == "root":
                 org_certs = db.list_certificates_by_organization(org_id)
                 active_children = [
-                    c for c in org_certs
+                    c
+                    for c in org_certs
                     if c["issuer_cert_id"] == old_cert_id and c["status"] == "active"
                 ]
                 if active_children:
-                    child_names = ", ".join([f"{c['cert_name']} ({c['cert_type']})" for c in active_children])
+                    child_names = ", ".join(
+                        [
+                            f"{c['cert_name']} ({c['cert_type']})"
+                            for c in active_children
+                        ]
+                    )
                     return templates.TemplateResponse(
                         "error.html",
                         {
@@ -2462,7 +2841,9 @@ async def create_root_ca(
         create_output = _run_create_cert_subprocess(params)
 
         layout = PkiLayout()
-        ws = init_root_workspace(_resolve_org_path(org_dir), cert_name_clean, layout, artifact_name=cert_uuid)
+        ws = init_root_workspace(
+            _resolve_org_path(org_dir), cert_name_clean, layout, artifact_name=cert_uuid
+        )
 
         # Verify files exist immediately after subprocess creates them (before DB commit)
         missing = _verify_cert_files_exist(ws)
@@ -2493,19 +2874,25 @@ async def create_root_ca(
             org_dir=_resolve_org_path(org_dir),
         )
         cert_info["cert_uuid"] = cert_uuid
-        cert_id = db.create_certificate_with_extensions_and_revoke(cert_info, renewal_cert_id=_renewal_id_int)
+        cert_id = db.create_certificate_with_extensions_and_revoke(
+            cert_info, renewal_cert_id=_renewal_id_int
+        )
         db_committed = True
 
         # Get session identity for audit logging
         user_name = _get_request_user(request)
         try:
-            db.log_certificate_operation(cert_id, "created", user_name, json.dumps({"cert_type": "root"}))
+            db.log_certificate_operation(
+                cert_id, "created", user_name, json.dumps({"cert_type": "root"})
+            )
         except Exception as e:
             logger.warning(f"Audit log failed (non-fatal): {e}")
         # Ensure a baseline (possibly empty) CRL exists immediately for this CA.
         created_root = db.get_certificate_by_id_for_organization(cert_id, org_id)
         if created_root:
-            _trigger_crl_regeneration(org, cert_id, created_root, root_user_password=root_ca_password)
+            _trigger_crl_regeneration(
+                org, cert_id, created_root, root_user_password=root_ca_password
+            )
 
         # Post-commitment renewal handling
         renewal_error = _handle_renewal_post_commit(org, org_id, renewal_of_cert_id)
@@ -2546,7 +2933,9 @@ async def create_root_ca(
             },
         )
     except TimeoutError as e:
-        logger.exception(f"Certificate creation subprocess timed out for org_id={org_id}")
+        logger.exception(
+            f"Certificate creation subprocess timed out for org_id={org_id}"
+        )
         if ws and not db_committed:
             _cleanup_cert_files(ws)
         return templates.TemplateResponse(
@@ -2573,7 +2962,9 @@ async def create_root_ca(
         )
 
 
-@app.get("/organizations/{org_id}/intermediate-ca", dependencies=[require_roles_config()])
+@app.get(
+    "/organizations/{org_id}/intermediate-ca", dependencies=[require_roles_config()]
+)
 async def intermediate_ca_page(request: Request, org_id: int):
     """Redirect to unified certificate creation page."""
     org = db.get_organization_by_id(org_id)
@@ -2587,10 +2978,16 @@ async def intermediate_ca_page(request: Request, org_id: int):
             },
         )
 
-    return RedirectResponse(f"/organizations/{org_id}/create-certificate", status_code=302)
+    return RedirectResponse(
+        f"/organizations/{org_id}/create-certificate", status_code=302
+    )
 
 
-@app.post("/organizations/{org_id}/intermediate-ca", response_class=HTMLResponse, dependencies=[require_roles_config()])
+@app.post(
+    "/organizations/{org_id}/intermediate-ca",
+    response_class=HTMLResponse,
+    dependencies=[require_roles_config()],
+)
 async def create_intermediate_ca(
     request: Request,
     org_id: int,
@@ -2648,8 +3045,15 @@ async def create_intermediate_ca(
         cert_name=root_ca,
         cert_type="root",
     )
-    root_artifact = root_cert["cert_uuid"] if root_cert and root_cert.get("cert_uuid") else root_ca
-    issuer_cert_path = _resolve_org_path(org["org_dir"]) / layout.root_dirname / layout.certs_dirname / f"{root_artifact}.pem.enc"
+    root_artifact = (
+        root_cert["cert_uuid"] if root_cert and root_cert.get("cert_uuid") else root_ca
+    )
+    issuer_cert_path = (
+        _resolve_org_path(org["org_dir"])
+        / layout.root_dirname
+        / layout.certs_dirname
+        / f"{root_artifact}.pem.enc"
+    )
     issuer_subject_fields = _read_cert_subject_fields(issuer_cert_path)
     locked_fields = _policy_locked_fields("root")
     cert_name_clean = _sanitize_cert_name(cert_name)
@@ -2722,7 +3126,9 @@ async def create_intermediate_ca(
     try:
         create_output = _run_create_cert_subprocess(params)
 
-        ws = init_intermediate_workspace(_resolve_org_path(org_dir), cert_name_clean, layout, artifact_name=cert_uuid)
+        ws = init_intermediate_workspace(
+            _resolve_org_path(org_dir), cert_name_clean, layout, artifact_name=cert_uuid
+        )
 
         # Verify files exist immediately after subprocess creates them (before DB commit)
         missing = _verify_cert_files_exist(ws)
@@ -2761,19 +3167,30 @@ async def create_intermediate_ca(
             issuer_cert_id=issuer_cert_id,
         )
         cert_info["cert_uuid"] = cert_uuid
-        cert_id = db.create_certificate_with_extensions_and_revoke(cert_info, renewal_cert_id=_renewal_id_int)
+        cert_id = db.create_certificate_with_extensions_and_revoke(
+            cert_info, renewal_cert_id=_renewal_id_int
+        )
         db_committed = True
 
         # Get session identity for audit logging
         user_name = _get_request_user(request)
         try:
-            db.log_certificate_operation(cert_id, "created", user_name, json.dumps({"cert_type": "intermediate"}))
+            db.log_certificate_operation(
+                cert_id, "created", user_name, json.dumps({"cert_type": "intermediate"})
+            )
         except Exception as e:
             logger.warning(f"Audit log failed (non-fatal): {e}")
         # Ensure a baseline (possibly empty) CRL exists immediately for this CA.
-        created_intermediate = db.get_certificate_by_id_for_organization(cert_id, org_id)
+        created_intermediate = db.get_certificate_by_id_for_organization(
+            cert_id, org_id
+        )
         if created_intermediate:
-            _trigger_crl_regeneration(org, cert_id, created_intermediate, root_user_password=root_user_password)
+            _trigger_crl_regeneration(
+                org,
+                cert_id,
+                created_intermediate,
+                root_user_password=root_user_password,
+            )
 
         # Post-commitment renewal handling
         renewal_error = _handle_renewal_post_commit(org, org_id, renewal_of_cert_id)
@@ -2804,7 +3221,9 @@ async def create_intermediate_ca(
             },
         )
     except TimeoutError as e:
-        logger.exception(f"Certificate creation subprocess timed out for org_id={org_id}")
+        logger.exception(
+            f"Certificate creation subprocess timed out for org_id={org_id}"
+        )
         if ws and not db_committed:
             _cleanup_cert_files(ws)
         return templates.TemplateResponse(
@@ -2817,7 +3236,9 @@ async def create_intermediate_ca(
             },
         )
     except Exception as e:
-        logger.exception(f"Unexpected error creating intermediate CA for org_id={org_id}")
+        logger.exception(
+            f"Unexpected error creating intermediate CA for org_id={org_id}"
+        )
         if ws and not db_committed:
             _cleanup_cert_files(ws)
         return templates.TemplateResponse(
@@ -2845,10 +3266,16 @@ async def end_entity_page(request: Request, org_id: int):
             },
         )
 
-    return RedirectResponse(f"/organizations/{org_id}/create-certificate", status_code=302)
+    return RedirectResponse(
+        f"/organizations/{org_id}/create-certificate", status_code=302
+    )
 
 
-@app.post("/organizations/{org_id}/end-entity", response_class=HTMLResponse, dependencies=[require_roles_config()])
+@app.post(
+    "/organizations/{org_id}/end-entity",
+    response_class=HTMLResponse,
+    dependencies=[require_roles_config()],
+)
 async def create_end_entity(
     request: Request,
     org_id: int,
@@ -2923,7 +3350,9 @@ async def create_end_entity(
             },
         )
 
-    available_issuers = {issuer["name"] for issuer in list_end_entity_issuers(org["org_dir"])}
+    available_issuers = {
+        issuer["name"] for issuer in list_end_entity_issuers(org["org_dir"])
+    }
     if issuer_name_clean not in available_issuers:
         return templates.TemplateResponse(
             "error.html",
@@ -2952,7 +3381,7 @@ async def create_end_entity(
             },
         )
     # Intermediate folders use cert_name, files use UUID
-    issuer_cert_uuid = issuer_cert.get('cert_uuid') or issuer_name_clean
+    issuer_cert_uuid = issuer_cert.get("cert_uuid") or issuer_name_clean
     issuer_cert_path = (
         _resolve_org_path(org["org_dir"])
         / layout.intermediates_dirname
@@ -2990,7 +3419,12 @@ async def create_end_entity(
     if enddate.strip():
         params["enddate"] = enddate.strip()
     else:
-        type_to_role = {"server": "end-entity-server", "client": "end-entity-client", "email": "end-entity-email", "ocsp": "end-entity-ocsp"}
+        type_to_role = {
+            "server": "end-entity-server",
+            "client": "end-entity-client",
+            "email": "end-entity-email",
+            "ocsp": "end-entity-ocsp",
+        }
         entity_policy = _load_role_policy(type_to_role[cert_type])
         params["enddate"] = compute_enddate(int(entity_policy["DEFAULT_DAYS"]))
 
@@ -3006,11 +3440,17 @@ async def create_end_entity(
             if old_cert and old_cert["cert_type"] in ("root", "intermediate"):
                 org_certs = db.list_certificates_by_organization(org_id)
                 active_children = [
-                    c for c in org_certs
+                    c
+                    for c in org_certs
                     if c["issuer_cert_id"] == old_cert_id and c["status"] == "active"
                 ]
                 if active_children:
-                    child_names = ", ".join([f"{c['cert_name']} ({c['cert_type']})" for c in active_children])
+                    child_names = ", ".join(
+                        [
+                            f"{c['cert_name']} ({c['cert_type']})"
+                            for c in active_children
+                        ]
+                    )
                     return templates.TemplateResponse(
                         "error.html",
                         {
@@ -3034,7 +3474,13 @@ async def create_end_entity(
     try:
         create_output = _run_create_cert_subprocess(params)
 
-        ws = init_end_entity_workspace(_resolve_org_path(org_dir), cert_type, cert_name_clean, layout, artifact_name=cert_uuid)
+        ws = init_end_entity_workspace(
+            _resolve_org_path(org_dir),
+            cert_type,
+            cert_name_clean,
+            layout,
+            artifact_name=cert_uuid,
+        )
 
         # Verify files exist immediately after subprocess creates them (before DB commit)
         # For server certs, p12_path/p12_pwd_path are not created, so skip them
@@ -3069,13 +3515,17 @@ async def create_end_entity(
             issuer_cert_id=issuer_cert_id,
         )
         cert_info["cert_uuid"] = cert_uuid
-        cert_id = db.create_certificate_with_extensions_and_revoke(cert_info, renewal_cert_id=_renewal_id_int)
+        cert_id = db.create_certificate_with_extensions_and_revoke(
+            cert_info, renewal_cert_id=_renewal_id_int
+        )
         db_committed = True
 
         # Get session identity for audit logging
         user_name = _get_request_user(request)
         try:
-            db.log_certificate_operation(cert_id, "created", user_name, json.dumps({"cert_type": cert_type}))
+            db.log_certificate_operation(
+                cert_id, "created", user_name, json.dumps({"cert_type": cert_type})
+            )
         except Exception as e:
             logger.warning(f"Audit log failed (non-fatal): {e}")
 
@@ -3108,7 +3558,9 @@ async def create_end_entity(
             },
         )
     except TimeoutError as e:
-        logger.exception(f"Certificate creation subprocess timed out for org_id={org_id}")
+        logger.exception(
+            f"Certificate creation subprocess timed out for org_id={org_id}"
+        )
         if ws and not db_committed:
             _cleanup_cert_files(ws)
         return templates.TemplateResponse(
@@ -3121,7 +3573,9 @@ async def create_end_entity(
             },
         )
     except Exception as e:
-        logger.exception(f"Unexpected error creating end-entity certificate for org_id={org_id}")
+        logger.exception(
+            f"Unexpected error creating end-entity certificate for org_id={org_id}"
+        )
         if ws and not db_committed:
             _cleanup_cert_files(ws)
         return templates.TemplateResponse(
@@ -3135,7 +3589,10 @@ async def create_end_entity(
         )
 
 
-@app.post("/organizations/{org_id}/certificates/{cert_id}/revoke", dependencies=[require_roles_config()])
+@app.post(
+    "/organizations/{org_id}/certificates/{cert_id}/revoke",
+    dependencies=[require_roles_config()],
+)
 async def revoke_certificate(
     request: Request,
     org_id: int,
@@ -3245,12 +3702,17 @@ async def revoke_certificate(
         # Query for active certificates issued by this CA
         children = db.list_certificates_by_organization(org_id)
         active_children = [
-            c for c in children
+            c
+            for c in children
             if c["issuer_cert_id"] == cert_id and c["status"] == "active"
         ]
         if active_children:
-            child_names = ", ".join([f"{c['cert_name']} ({c['cert_type']})" for c in active_children])
-            logger.warning(f"Attempt to revoke CA {cert_id} with active children: {child_names}")
+            child_names = ", ".join(
+                [f"{c['cert_name']} ({c['cert_type']})" for c in active_children]
+            )
+            logger.warning(
+                f"Attempt to revoke CA {cert_id} with active children: {child_names}"
+            )
             return templates.TemplateResponse(
                 "error.html",
                 {
@@ -3275,12 +3737,19 @@ async def revoke_certificate(
     # Log revocation with actual session identity
     user_name = _get_request_user(request)
     try:
-        db.log_certificate_operation(cert_id, "revoked", user_name, json.dumps({"reason": reason}))
+        db.log_certificate_operation(
+            cert_id, "revoked", user_name, json.dumps({"reason": reason})
+        )
     except Exception as e:
         logger.warning(f"Audit log failed (non-fatal): {e}")
 
     # Regenerate CRL for the issuer
-    _trigger_crl_regeneration(org, issuer_id, issuer_cert, root_user_password=root_user_password if issuer_type == "root" else None)
+    _trigger_crl_regeneration(
+        org,
+        issuer_id,
+        issuer_cert,
+        root_user_password=root_user_password if issuer_type == "root" else None,
+    )
 
     # Redirect back to dashboard
     root_ca_exists = bool(get_latest_active_root_ca_name(org_id))
@@ -3307,7 +3776,11 @@ async def revoke_certificate(
     )
 
 
-@app.get("/api/check-consistency", response_class=Response, dependencies=[require_roles_config()])
+@app.get(
+    "/api/check-consistency",
+    response_class=Response,
+    dependencies=[require_roles_config()],
+)
 async def check_consistency():
     """
     Run consistency checks between database and PEM files.
@@ -3316,14 +3789,21 @@ async def check_consistency():
     """
     if ConsistencyChecker is None:
         return Response(
-            content=json.dumps({
-                "success": False,
-                "error": "Consistency check module not available.",
-                "stats": {},
-                "issues": [{"level": "error", "message": "Consistency check module could not be loaded."}],
-            }),
+            content=json.dumps(
+                {
+                    "success": False,
+                    "error": "Consistency check module not available.",
+                    "stats": {},
+                    "issues": [
+                        {
+                            "level": "error",
+                            "message": "Consistency check module could not be loaded.",
+                        }
+                    ],
+                }
+            ),
             media_type="application/json",
-            status_code=500
+            status_code=500,
         )
 
     try:
@@ -3339,25 +3819,34 @@ async def check_consistency():
         }
 
         return Response(
-            content=json.dumps(response_data),
-            media_type="application/json"
+            content=json.dumps(response_data), media_type="application/json"
         )
     except Exception as e:
         logger.exception("Consistency check failed")
         return Response(
-            content=json.dumps({
-                "success": False,
-                "error": "Consistency check failed. Please contact an administrator.",
-                "stats": {},
-                "issues": [{"level": "error", "message": "An unexpected error occurred during consistency check."}],
-            }),
+            content=json.dumps(
+                {
+                    "success": False,
+                    "error": "Consistency check failed. Please contact an administrator.",
+                    "stats": {},
+                    "issues": [
+                        {
+                            "level": "error",
+                            "message": "An unexpected error occurred during consistency check.",
+                        }
+                    ],
+                }
+            ),
             media_type="application/json",
-            status_code=500
+            status_code=500,
         )
 
 
 if __name__ == "__main__":
     import uvicorn
+
     host = os.environ.get("PKI_HOST", "0.0.0.0")
     port = int(os.environ.get("PKI_PORT", "8000"))
-    uvicorn.run(app, host=host, port=port, reload=False, log_config=get_uvicorn_log_config())
+    uvicorn.run(
+        app, host=host, port=port, reload=False, log_config=get_uvicorn_log_config()
+    )
