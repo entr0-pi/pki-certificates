@@ -4,6 +4,7 @@ import argparse
 import sys
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
+from typing import cast
 
 from cryptography import x509
 from cryptography.hazmat.primitives import serialization
@@ -66,7 +67,7 @@ def generate_pkcs12(
     # Compatible with: openssl pkcs12 -export -macalg sha1 -legacy
     p12_bytes = pkcs12.serialize_key_and_certificates(
         name=None,
-        key=private_key,
+        key=cast(object, private_key),  # type: ignore[arg-type]
         cert=cert,
         cas=None,
         encryption_algorithm=serialization.BestAvailableEncryption(p12_password),
@@ -136,8 +137,8 @@ def main() -> None:
         sys.exit(" End-entity certificate already exists (key/cert present) ")
 
     # Ensure password file for certificate
-    ensure_password_file(ws["pwd_path"])
-    passphrase = file_crypto.read_encrypted(ws["pwd_path"]).strip()
+    ensure_password_file(ws["pwd_path"])  # type: ignore[arg-type]
+    passphrase = file_crypto.read_encrypted(ws["pwd_path"]).strip()  # type: ignore[arg-type]
 
     # Construct issuer paths based on issuer_type
     # For intermediates: folder = issuer_name (cert_name), files = issuer_artifact_name (UUID)
@@ -207,14 +208,14 @@ def main() -> None:
     key = cert_crypto.generate_ec_key(curve_name)
     cert_crypto.save_private_key(
         key,
-        ws["key_path"],
+        cast(Path, ws["key_path"]),
         passphrase,
         cipher_name
     )
 
     # 2) CSR
     csr = cert_crypto.create_csr(key, subject, san, req_hash)
-    file_crypto.write_encrypted(ws["csr_path"], csr.public_bytes(serialization.Encoding.PEM))
+    file_crypto.write_encrypted(cast(Path, ws["csr_path"]), csr.public_bytes(serialization.Encoding.PEM))
 
     # 3) Sign certificate with issuer CA
     now = datetime.now(timezone.utc)
@@ -231,25 +232,25 @@ def main() -> None:
         subject=subject,
         issuer=issuer_cert.subject,  # Signed by CA
         public_key=key.public_key(),
-        issuer_key=issuer_key,  # Sign with CA's private key
+        issuer_key=cast(object, issuer_key),  # type: ignore[arg-type]
         serial_number=x509.random_serial_number(),
         not_before=now - timedelta(minutes=1),
         not_after=not_after,
         extensions=extensions,
         hash_algo=ca_hash
     )
-    file_crypto.write_encrypted(ws["crt_path"], cert.public_bytes(serialization.Encoding.PEM))
+    file_crypto.write_encrypted(cast(Path, ws["crt_path"]), cert.public_bytes(serialization.Encoding.PEM))
 
     # Generate PKCS12 file for client and email certificates only
     # (server certs typically don't need PKCS12 format)
     if cert_type in ("client", "email"):
         try:
             generate_pkcs12(
-                cert_path=ws["crt_path"],
-                key_path=ws["key_path"],
-                pwd_path=ws["pwd_path"],
-                pkcs12_path=ws["p12_path"],
-                p12_pwd_path=ws["p12_pwd_path"]
+                cert_path=cast(Path, ws["crt_path"]),
+                key_path=cast(Path, ws["key_path"]),
+                pwd_path=cast(Path, ws["pwd_path"]),
+                pkcs12_path=cast(Path, ws["p12_path"]),
+                p12_pwd_path=cast(Path, ws["p12_pwd_path"])
             )
         except Exception as e:
             print(f" Warning: PKCS12 generation failed: {e}")
@@ -264,10 +265,10 @@ def main() -> None:
     # Validate + print
     validate_and_print(
         ws,
-        key_path=ws["key_path"],
-        cert_path=ws["crt_path"],
-        csr_path=ws["csr_path"],
-        pwd_path=ws["pwd_path"],
+        key_path=cast(Path, ws["key_path"]),
+        cert_path=cast(Path, ws["crt_path"]),
+        csr_path=cast(Path, ws["csr_path"]),
+        pwd_path=cast(Path, ws["pwd_path"]),
         title=f"Key information for: {cert_name}",
         issuer_cert=issuer_cert,
         is_ca=False,

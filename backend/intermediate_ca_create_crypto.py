@@ -4,6 +4,7 @@ import argparse
 import sys
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
+from typing import cast
 
 from cryptography import x509
 from cryptography.hazmat.primitives import serialization
@@ -57,8 +58,8 @@ def main() -> None:
         sys.exit(" Intermediate CA already exists (key/csr/cert present) ")
 
     # Ensure password file for intermediate CA
-    ensure_password_file(ws["pwd_path"])
-    passphrase = file_crypto.read_encrypted(ws["pwd_path"]).strip()
+    ensure_password_file(ws["pwd_path"])  # type: ignore[arg-type]
+    passphrase = file_crypto.read_encrypted(ws["pwd_path"]).strip()  # type: ignore[arg-type]
 
     # Construct issuer (root CA) paths from issuer_name
     # For intermediate CAs, issuer is always in the root directory
@@ -122,14 +123,14 @@ def main() -> None:
     key = cert_crypto.generate_ec_key(curve_name)
     cert_crypto.save_private_key(
         key,
-        ws["key_path"],
+        cast(Path, ws["key_path"]),
         passphrase,
         cipher_name
     )
 
     # 2) CSR
     csr = cert_crypto.create_csr(key, subject, san, req_hash)
-    file_crypto.write_encrypted(ws["csr_path"], csr.public_bytes(serialization.Encoding.PEM))
+    file_crypto.write_encrypted(cast(Path, ws["csr_path"]), csr.public_bytes(serialization.Encoding.PEM))
 
     # 3) Sign certificate with issuer (root CA)
     now = datetime.now(timezone.utc)
@@ -146,22 +147,22 @@ def main() -> None:
         subject=subject,
         issuer=issuer_cert.subject,  # NOT self-signed - use root CA's subject
         public_key=key.public_key(),
-        issuer_key=issuer_key,  # Sign with root CA's private key
+        issuer_key=cast(object, issuer_key),  # type: ignore[arg-type]
         serial_number=x509.random_serial_number(),
         not_before=now - timedelta(minutes=1),
         not_after=not_after,
         extensions=extensions,
         hash_algo=ca_hash
     )
-    file_crypto.write_encrypted(ws["crt_path"], cert.public_bytes(serialization.Encoding.PEM))
+    file_crypto.write_encrypted(cast(Path, ws["crt_path"]), cert.public_bytes(serialization.Encoding.PEM))
 
     # Validate + print
     validate_and_print(
         ws,
-        key_path=ws["key_path"],
-        cert_path=ws["crt_path"],
-        csr_path=ws["csr_path"],
-        pwd_path=ws["pwd_path"],
+        key_path=cast(Path, ws["key_path"]),
+        cert_path=cast(Path, ws["crt_path"]),
+        csr_path=cast(Path, ws["csr_path"]),
+        pwd_path=cast(Path, ws["pwd_path"]),
         title=f"Key information for: {cert_name}",
         issuer_cert=issuer_cert,
         is_ca=True

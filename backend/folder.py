@@ -39,7 +39,7 @@ class PkiLayout:
     end_entities_dirname: str = "3_end-entities"
 
     # End-entity type subfolders
-    end_entity_types: tuple[str, ...] = ("client", "email", "server")
+    end_entity_types: tuple[str, ...] = ("client", "email", "ocsp", "server")
 
     # CA subdirs
     ca_subdirs: tuple[str, ...] = ("certs", "crl", "csr", "private")
@@ -85,7 +85,7 @@ def init_root_workspace(
     cert_name: str,
     layout: PkiLayout,
     artifact_name: str | None = None,
-) -> dict[str, Path]:
+) -> dict[str, Path | bool]:
     """
     Creates directory structure for Root CA.
 
@@ -122,7 +122,7 @@ def init_intermediate_workspace(
     cert_name: str,
     layout: PkiLayout,
     artifact_name: str,
-) -> dict[str, Path]:
+) -> dict[str, Path | bool]:
     """
     Creates directory structure for Intermediate CA.
 
@@ -164,7 +164,7 @@ def init_end_entity_workspace(
     entity_name: str,
     layout: PkiLayout,
     artifact_name: str | None = None,
-) -> dict[str, Path]:
+) -> dict[str, Path | bool]:
     """
     Creates directory structure for end-entity certificate.
 

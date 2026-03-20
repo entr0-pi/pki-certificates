@@ -37,6 +37,7 @@ CREATE TABLE certificates (
 
     -- Certificate details
     serial_number VARCHAR(64) UNIQUE NOT NULL,  -- Hex format
+    fingerprint_sha256 VARCHAR(64) UNIQUE,       -- SHA-256 hex fingerprint of DER-encoded cert
     not_before TIMESTAMP NOT NULL,
     not_after TIMESTAMP NOT NULL,
 
@@ -176,6 +177,8 @@ CREATE TABLE certificate_audit_log (
     operation VARCHAR(50) NOT NULL,  -- 'created', 'revoked', 'renewed', 'exported'
     operation_timestamp TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     user_name VARCHAR(100),
+    ip_address VARCHAR(45),   -- IPv4 or IPv6 address of the requester
+    user_role VARCHAR(20),    -- Role at time of action ('admin', 'manager', 'user')
     details TEXT,  -- JSON with additional context
 
     FOREIGN KEY (certificate_id) REFERENCES certificates(id) ON DELETE SET NULL
@@ -200,6 +203,12 @@ CREATE INDEX idx_ext_cert ON certificate_extensions(certificate_id);
 -- Audit lookups
 CREATE INDEX idx_audit_cert ON certificate_audit_log(certificate_id);
 CREATE INDEX idx_audit_timestamp ON certificate_audit_log(operation_timestamp);
+
+-- Composite indexes for common filtered queries
+CREATE INDEX idx_certs_org_status ON certificates(organization_id, status);
+CREATE INDEX idx_certs_status_not_after ON certificates(status, not_after);
+CREATE INDEX idx_certs_issuer_status ON certificates(issuer_cert_id, status);
+CREATE INDEX idx_crls_issuer ON crls(issuer_cert_id);
 
 -- ============================================================================
 -- VIEWS
@@ -238,4 +247,4 @@ CREATE TABLE IF NOT EXISTS schema_version (
     applied_at  TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 
-INSERT INTO schema_version (version) VALUES (2);
+INSERT INTO schema_version (version) VALUES (3);

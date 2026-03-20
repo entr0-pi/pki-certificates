@@ -71,6 +71,9 @@ def verify_signature(obj, issuer_public_key) -> None:
     data = obj.tbs_certificate_bytes if isinstance(obj, x509.Certificate) else obj.tbs_certrequest_bytes
     algo = obj.signature_hash_algorithm
 
+    if algo is None:
+        raise RuntimeError("Certificate has unknown or unsupported signature algorithm")
+
     if isinstance(issuer_public_key, ec.EllipticCurvePublicKey):
         issuer_public_key.verify(sig, data, ec.ECDSA(algo))
         return
@@ -128,6 +131,20 @@ def public_key_info(pub) -> str:
     if isinstance(pub, rsa.RSAPublicKey):
         return f"RSA ({pub.key_size} bits)"
     return type(pub).__name__
+
+
+def eku_oid_to_name(oid_obj) -> str:
+    """Convert an OID to its readable EKU name."""
+    # Map OID dotted strings to readable names
+    oid_map = {
+        "1.3.6.1.5.5.7.3.1": "serverAuth",
+        "1.3.6.1.5.5.7.3.2": "clientAuth",
+        "1.3.6.1.5.5.7.3.4": "emailProtection",
+        "1.3.6.1.5.5.7.3.3": "codeSigning",
+        "1.3.6.1.5.5.7.3.8": "timeStamping",
+        "1.3.6.1.5.5.7.3.9": "ocspSigning",
+    }
+    return oid_map.get(oid_obj.dotted_string) or oid_obj.dotted_string
 
 
 def print_cert_summary(cert: x509.Certificate, title: str) -> None:
@@ -198,21 +215,7 @@ def print_cert_summary(cert: x509.Certificate, title: str) -> None:
     try:
         e = cert.extensions.get_extension_for_class(x509.ExtendedKeyUsage)
         eku: x509.ExtendedKeyUsage = e.value
-        eku_names = []
-        for oid in eku:
-            # Map common OIDs to readable names
-            if oid == x509.oid.ExtendedKeyUsageOID.SERVER_AUTH:
-                eku_names.append("serverAuth")
-            elif oid == x509.oid.ExtendedKeyUsageOID.CLIENT_AUTH:
-                eku_names.append("clientAuth")
-            elif oid == x509.oid.ExtendedKeyUsageOID.EMAIL_PROTECTION:
-                eku_names.append("emailProtection")
-            elif oid == x509.oid.ExtendedKeyUsageOID.CODE_SIGNING:
-                eku_names.append("codeSigning")
-            elif oid == x509.oid.ExtendedKeyUsageOID.TIME_STAMPING:
-                eku_names.append("timeStamping")
-            else:
-                eku_names.append(oid.dotted_string)
+        eku_names = [eku_oid_to_name(oid) for oid in eku]
         rows.append(("ExtKeyUsage", f"{', '.join(eku_names)}{crit_suffix(e.critical)}"))
     except x509.ExtensionNotFound:
         pass
@@ -273,7 +276,16 @@ def validate_and_print(
     cert_pub = cert.public_key()
     if type(key_pub) is not type(cert_pub):
         raise RuntimeError("Key type and certificate public key type do not match.")
-    if key_pub.public_numbers() != cert_pub.public_numbers():
+    # Compare serialized public keys (works for all key types: RSA, EC, Ed25519, X25519, etc.)
+    key_der = key_pub.public_bytes(
+        encoding=serialization.Encoding.DER,
+        format=serialization.PublicFormat.SubjectPublicKeyInfo
+    )
+    cert_der = cert_pub.public_bytes(
+        encoding=serialization.Encoding.DER,
+        format=serialization.PublicFormat.SubjectPublicKeyInfo
+    )
+    if key_der != cert_der:
         raise RuntimeError("Private key does not match certificate public key.")
 
     # Test #4: Verify extensions based on certificate type
@@ -294,17 +306,17 @@ def validate_and_print(
             eku_ext = cert.extensions.get_extension_for_class(x509.ExtendedKeyUsage)
             eku: x509.ExtendedKeyUsage = eku_ext.value
 
-            # Map common EKU names to OIDs
+            # Map common EKU names to OID dotted strings
             eku_oid_map = {
-                "serverAuth": x509.oid.ExtendedKeyUsageOID.SERVER_AUTH,
-                "clientAuth": x509.oid.ExtendedKeyUsageOID.CLIENT_AUTH,
-                "emailProtection": x509.oid.ExtendedKeyUsageOID.EMAIL_PROTECTION,
-                "codeSigning": x509.oid.ExtendedKeyUsageOID.CODE_SIGNING,
-                "timeStamping": x509.oid.ExtendedKeyUsageOID.TIME_STAMPING,
-                "ocspSigning": x509.oid.ExtendedKeyUsageOID.OCSP_SIGNING,
+                "serverAuth": "1.3.6.1.5.5.7.3.1",
+                "clientAuth": "1.3.6.1.5.5.7.3.2",
+                "emailProtection": "1.3.6.1.5.5.7.3.4",
+                "codeSigning": "1.3.6.1.5.5.7.3.3",
+                "timeStamping": "1.3.6.1.5.5.7.3.8",
+                "ocspSigning": "1.3.6.1.5.5.7.3.9",
             }
 
-            # Convert expected EKU names to OIDs
+            # Convert expected EKU names to OID dotted strings
             expected_oids = []
             for eku_name in expected_eku:
                 eku_name = eku_name.strip()
@@ -313,11 +325,11 @@ def validate_and_print(
                 else:
                     raise RuntimeError(f"Unknown ExtendedKeyUsage name: {eku_name}")
 
-            # Check if all expected EKUs are present
-            cert_eku_oids = list(eku)
+            # Check if all expected EKUs are present (compare dotted strings)
+            cert_eku_oid_strings = [oid.dotted_string for oid in eku]
             for expected_oid in expected_oids:
-                if expected_oid not in cert_eku_oids:
-                    raise RuntimeError(f"Missing expected ExtendedKeyUsage: {expected_oid._name}")
+                if expected_oid not in cert_eku_oid_strings:
+                    raise RuntimeError(f"Missing expected ExtendedKeyUsage: {expected_oid}")
 
         except x509.ExtensionNotFound:
             raise RuntimeError(f"ExtendedKeyUsage extension not found, expected: {', '.join(expected_eku)}")

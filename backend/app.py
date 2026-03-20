@@ -32,10 +32,8 @@ from fastapi.responses import (
 )
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
-from logging_config import configure_app_logging, get_uvicorn_log_config
 from sqlalchemy.exc import IntegrityError as SAIntegrityError
 
-# Import Env variables
 load_dotenv()
 
 # Import ConsistencyChecker at module level to avoid sys.path manipulation in handlers
@@ -45,7 +43,7 @@ if _scripts_path not in sys.path:
     sys.path.insert(0, _scripts_path)
 
 try:
-    from check_consistency import ConsistencyChecker
+    from check_consistency import ConsistencyChecker  # type: ignore[import-not-found]
 except ImportError as e:
     logger_tmp = logging.getLogger(__name__)
     logger_tmp.warning(
@@ -105,6 +103,8 @@ else:
     )
 
 # Configure logging with centralized ISO 8601 format
+from logging_config import configure_app_logging, get_uvicorn_log_config
+
 configure_app_logging()
 logger = logging.getLogger(__name__)
 
@@ -120,7 +120,7 @@ VALID_REVOCATION_REASONS = frozenset(
         "certificateHold",
         "removeFromCRL",
         "privilegeWithdrawn",
-        "aACompromise",
+        "aaCompromise",
     }
 )
 
@@ -513,7 +513,7 @@ async def create_auth_session(request: Request, api_key: str = Form(...)):
         value=token,
         httponly=True,
         secure=settings.cookie_secure,
-        samesite=settings.cookie_samesite,
+        samesite=settings.cookie_samesite,  # type: ignore[arg-type]
         max_age=settings.session_minutes * 60,
         path="/",
         domain=settings.cookie_domain,
@@ -600,6 +600,18 @@ def _get_request_user(request: Request) -> str:
         if hasattr(request.state, "auth")
         else "unknown"
     )
+
+
+def _get_request_role(request: Request) -> str | None:
+    """Extract user role from request state for audit logging."""
+    if hasattr(request.state, "auth"):
+        return request.state.auth.get("role")
+    return None
+
+
+def _get_request_ip(request: Request) -> str | None:
+    """Extract client IP address from request for audit logging."""
+    return request.client.host if request.client else None
 
 
 _CERT_ARTIFACT_KEYS = (
@@ -702,8 +714,10 @@ def _handle_renewal_post_commit(
             logger.warning(
                 f"Renewal attempt with non-existent cert_id {old_cert_id} for org_id {org_id}"
             )
-    except (ValueError, Exception):
-        pass  # Silently ignore if subordinate check/CRL regeneration fails
+    except ValueError:
+        pass  # Non-integer renewal_of_cert_id; nothing to do
+    except Exception:
+        logger.warning("Post-commit renewal handling failed (non-fatal)", exc_info=True)
     return None
 
 
@@ -743,9 +757,16 @@ def _read_cert_subject_fields(cert_path: Path) -> dict[str, str]:
     cert = x509.load_pem_x509_certificate(file_crypto.read_encrypted(cert_path))
     subject = cert.subject
 
-    def _get(oid: NameOID) -> str:
+    def _get(oid: x509.ObjectIdentifier) -> str:
         attrs = subject.get_attributes_for_oid(oid)
-        return attrs[0].value.strip() if attrs else ""
+        if not attrs:
+            return ""
+        val = attrs[0].value
+        if isinstance(val, str):
+            return val.strip()
+        if isinstance(val, (bytes, bytearray)):
+            return bytes(val).decode('utf-8').strip()
+        return str(val).strip()
 
     return {
         "C": _get(NameOID.COUNTRY_NAME),
@@ -1274,7 +1295,7 @@ async def restore_full_backup(request: Request, backup_file: UploadFile = File(.
                 pass
             logger.error(f"Failed to receive backup upload: {e}")
             return RedirectResponse(
-                f"/toolbox?restore=error&detail=Upload+failed", status_code=303
+                "/toolbox?restore=error&detail=Upload+failed", status_code=303
             )
 
         # Phase 2: Validate ZIP structure
@@ -1599,7 +1620,7 @@ async def restore_full_backup(request: Request, backup_file: UploadFile = File(.
                 logger.warning(f"Failed to clean up old database file: {e}")
 
         data_old_exists = data_old is not None and data_old.exists()
-        if data_old_exists:
+        if data_old_exists and data_old is not None:
             try:
                 shutil.rmtree(data_old)
             except OSError as e:
@@ -2154,7 +2175,7 @@ async def list_organization_crls(org_id: int):
 
         # Get last updated timestamp from CRL file
         last_updated = None
-        if has_crl and crl_path.exists():
+        if has_crl and crl_path is not None and crl_path.exists():
             try:
                 mtime = crl_path.stat().st_mtime
                 from datetime import datetime
@@ -2293,7 +2314,7 @@ async def download_certificate(
         # Audit: PEM download
         user_name = _get_request_user(request)
         try:
-            db.log_certificate_operation(cert_id, "downloaded_pem", user_name, None)
+            db.log_certificate_operation(cert_id, "downloaded_pem", user_name, None, _get_request_ip(request), _get_request_role(request))
         except Exception as e:
             logger.warning(f"Audit log failed (non-fatal): {e}")
         return Response(
@@ -2321,7 +2342,7 @@ async def download_certificate(
         # Audit: P12 download
         user_name = _get_request_user(request)
         try:
-            db.log_certificate_operation(cert_id, "downloaded_p12", user_name, None)
+            db.log_certificate_operation(cert_id, "downloaded_p12", user_name, None, _get_request_ip(request), _get_request_role(request))
         except Exception as e:
             logger.warning(f"Audit log failed (non-fatal): {e}")
         return Response(
@@ -2341,7 +2362,7 @@ async def download_certificate(
         # Audit: chain download
         user_name = _get_request_user(request)
         try:
-            db.log_certificate_operation(cert_id, "downloaded_chain", user_name, None)
+            db.log_certificate_operation(cert_id, "downloaded_chain", user_name, None, _get_request_ip(request), _get_request_role(request))
         except Exception as e:
             logger.warning(f"Audit log failed (non-fatal): {e}")
         return Response(
@@ -2364,7 +2385,7 @@ async def download_certificate(
         user_name = _get_request_user(request)
         try:
             db.log_certificate_operation(
-                cert_id, "downloaded_full_chain", user_name, None
+                cert_id, "downloaded_full_chain", user_name, None, _get_request_ip(request), _get_request_role(request)
             )
         except Exception as e:
             logger.warning(f"Audit log failed (non-fatal): {e}")
@@ -2422,7 +2443,7 @@ async def get_p12_password(request: Request, org_id: int, cert_id: int):
     # Audit: P12 password viewed
     user_name = _get_request_user(request)
     try:
-        db.log_certificate_operation(cert_id, "viewed_p12_password", user_name, None)
+        db.log_certificate_operation(cert_id, "viewed_p12_password", user_name, None, _get_request_ip(request), _get_request_role(request))
     except Exception as e:
         logger.warning(f"Audit log failed (non-fatal): {e}")
     return {"password": password, "cert_name": cert["cert_name"]}
@@ -2493,7 +2514,7 @@ def _build_certificate_chain_pem(
 
     while current:
         current_id = current.get("id")
-        if current_id in visited_ids:
+        if current_id is None or current_id in visited_ids:
             return None
         visited_ids.add(current_id)
 
@@ -2883,7 +2904,8 @@ async def create_root_ca(
         user_name = _get_request_user(request)
         try:
             db.log_certificate_operation(
-                cert_id, "created", user_name, json.dumps({"cert_type": "root"})
+                cert_id, "created", user_name, json.dumps({"cert_type": "root"}),
+                _get_request_ip(request), _get_request_role(request)
             )
         except Exception as e:
             logger.warning(f"Audit log failed (non-fatal): {e}")
@@ -3114,6 +3136,36 @@ async def create_intermediate_ca(
     if eccurve.strip():
         params["eccurve"] = eccurve.strip()
 
+    # Pre-commit: block renewal if the intermediate CA has active subordinates
+    if renewal_of_cert_id and renewal_of_cert_id.strip():
+        try:
+            old_cert_id = int(renewal_of_cert_id)
+            old_cert = db.get_certificate_by_id_for_organization(old_cert_id, org_id)
+            if old_cert and old_cert["cert_type"] == "intermediate":
+                org_certs = db.list_certificates_by_organization(org_id)
+                active_children = [
+                    c
+                    for c in org_certs
+                    if c["issuer_cert_id"] == old_cert_id and c["status"] == "active"
+                ]
+                if active_children:
+                    child_names = ", ".join(
+                        [
+                            f"{c['cert_name']} ({c['cert_type']})"
+                            for c in active_children
+                        ]
+                    )
+                    return templates.TemplateResponse(
+                        "error.html",
+                        {
+                            "request": request,
+                            "error_message": f"Cannot renew this certificate because it has active subordinate certificates: {child_names}. Please revoke child certificates first.",
+                            "org_name": org["name"],
+                        },
+                    )
+        except (ValueError, Exception):
+            pass  # Ignore validation errors and proceed
+
     ws: dict | None = None
     db_committed = False
     _renewal_id_int: int | None = None
@@ -3176,7 +3228,8 @@ async def create_intermediate_ca(
         user_name = _get_request_user(request)
         try:
             db.log_certificate_operation(
-                cert_id, "created", user_name, json.dumps({"cert_type": "intermediate"})
+                cert_id, "created", user_name, json.dumps({"cert_type": "intermediate"}),
+                _get_request_ip(request), _get_request_role(request)
             )
         except Exception as e:
             logger.warning(f"Audit log failed (non-fatal): {e}")
@@ -3524,7 +3577,8 @@ async def create_end_entity(
         user_name = _get_request_user(request)
         try:
             db.log_certificate_operation(
-                cert_id, "created", user_name, json.dumps({"cert_type": cert_type})
+                cert_id, "created", user_name, json.dumps({"cert_type": cert_type}),
+                _get_request_ip(request), _get_request_role(request)
             )
         except Exception as e:
             logger.warning(f"Audit log failed (non-fatal): {e}")
@@ -3738,7 +3792,8 @@ async def revoke_certificate(
     user_name = _get_request_user(request)
     try:
         db.log_certificate_operation(
-            cert_id, "revoked", user_name, json.dumps({"reason": reason})
+            cert_id, "revoked", user_name, json.dumps({"reason": reason}),
+            _get_request_ip(request), _get_request_role(request)
         )
     except Exception as e:
         logger.warning(f"Audit log failed (non-fatal): {e}")

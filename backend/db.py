@@ -14,6 +14,7 @@ import logging
 from sqlalchemy import create_engine, text, event
 
 from cryptography import x509
+from cryptography.hazmat.primitives import hashes
 from cryptography.hazmat.primitives.asymmetric import rsa, ec
 from cryptography.x509.oid import NameOID
 
@@ -30,7 +31,7 @@ DB_PATH = get_db_path()
 SCHEMA_PATH = get_schema_path()
 
 # Schema version this codebase expects
-SCHEMA_VERSION = 2
+SCHEMA_VERSION = 3
 
 # SQLAlchemy Engine singleton
 engine = create_engine(
@@ -86,6 +87,8 @@ REQUIRED_INDEXES = {
     "idx_certs_org", "idx_certs_issuer", "idx_certs_type", "idx_certs_status",
     "idx_certs_not_after", "idx_certs_serial", "idx_san_cert", "idx_ext_cert",
     "idx_audit_cert", "idx_audit_timestamp",
+    "idx_certs_org_status", "idx_certs_status_not_after", "idx_certs_issuer_status",
+    "idx_crls_issuer",
 }
 
 
@@ -264,11 +267,15 @@ def extract_certificate_metadata(
 ) -> Dict[str, Any]:
     cert = x509.load_pem_x509_certificate(file_crypto.read_encrypted(cert_path))
 
-    def _get_attr(oid: NameOID) -> Optional[str]:
-        attrs = cert.subject.get_attributes_for_oid(oid)
-        return attrs[0].value if attrs else None
+    def _get_attr(oid: x509.ObjectIdentifier) -> Optional[str]:
+        attrs = cert.subject.get_attributes_for_oid(oid)  # type: ignore[arg-type]
+        if not attrs:
+            return None
+        val = attrs[0].value
+        return val if isinstance(val, str) else val.decode('utf-8') if isinstance(val, bytes) else str(val)
 
     serial_number = format(cert.serial_number, "x")
+    fingerprint_sha256 = cert.fingerprint(hashes.SHA256()).hex()
     not_before = cert.not_valid_before_utc
     not_after = cert.not_valid_after_utc
 
@@ -302,9 +309,10 @@ def extract_certificate_metadata(
     sans = []
     try:
         san_ext = cert.extensions.get_extension_for_oid(
-            x509.oid.ExtensionOID.SUBJECT_ALTERNATIVE_NAME
+            x509.oid.ExtensionOID.SUBJECT_ALTERNATIVE_NAME  # type: ignore[attr-defined]
         )
-        for name in san_ext.value:
+        san_value: x509.SubjectAlternativeName = san_ext.value  # type: ignore[assignment]
+        for name in san_value:
             if isinstance(name, x509.DNSName):
                 sans.append({"san_type": "DNS", "san_value": name.value})
             elif isinstance(name, x509.RFC822Name):
@@ -320,9 +328,9 @@ def extract_certificate_metadata(
     basic_constraints = None
     try:
         bc_ext = cert.extensions.get_extension_for_oid(
-            x509.oid.ExtensionOID.BASIC_CONSTRAINTS
+            x509.oid.ExtensionOID.BASIC_CONSTRAINTS  # type: ignore[attr-defined]
         )
-        bc = bc_ext.value
+        bc: x509.BasicConstraints = bc_ext.value  # type: ignore[assignment]
         basic_constraints = {"is_ca": bc.ca, "path_length": bc.path_length}
     except x509.ExtensionNotFound:
         pass
@@ -331,9 +339,9 @@ def extract_certificate_metadata(
     key_usage = None
     try:
         ku_ext = cert.extensions.get_extension_for_oid(
-            x509.oid.ExtensionOID.KEY_USAGE
+            x509.oid.ExtensionOID.KEY_USAGE  # type: ignore[attr-defined]
         )
-        ku = ku_ext.value
+        ku: x509.KeyUsage = ku_ext.value  # type: ignore[assignment]
         key_usage = {
             "is_critical": ku_ext.critical,
             "digital_signature": ku.digital_signature,
@@ -354,9 +362,10 @@ def extract_certificate_metadata(
     extended_key_usage = []
     try:
         eku_ext = cert.extensions.get_extension_for_oid(
-            x509.oid.ExtensionOID.EXTENDED_KEY_USAGE
+            x509.oid.ExtensionOID.EXTENDED_KEY_USAGE  # type: ignore[attr-defined]
         )
-        for oid in eku_ext.value:
+        eku_value: x509.ExtendedKeyUsage = eku_ext.value  # type: ignore[assignment]
+        for oid in eku_value:
             oid_str = oid.dotted_string
             eku_name = EKU_OID_TO_NAME.get(oid_str)
             if eku_name:  # Only include recognized EKUs
@@ -376,21 +385,34 @@ def extract_certificate_metadata(
         # Format extension value as human-readable string
         try:
             if ext_oid == "2.5.29.19":  # BasicConstraints
-                bc = ext.value
+                bc: x509.BasicConstraints = ext.value  # type: ignore[assignment]
                 ext_value = f"CA:{bc.ca}, pathlen:{bc.path_length}" if bc.path_length else f"CA:{bc.ca}"
             elif ext_oid == "2.5.29.15":  # KeyUsage
-                ku = ext.value
-                flags = [f.name for f in [
-                    ku.digital_signature, ku.content_commitment, ku.key_encipherment,
-                    ku.data_encipherment, ku.key_agreement, ku.key_cert_sign, ku.crl_sign
-                ] if f]
+                ku: x509.KeyUsage = ext.value  # type: ignore[assignment]
+                flags = []
+                if ku.digital_signature:
+                    flags.append("digitalSignature")
+                if ku.content_commitment:
+                    flags.append("contentCommitment")
+                if ku.key_encipherment:
+                    flags.append("keyEncipherment")
+                if ku.data_encipherment:
+                    flags.append("dataEncipherment")
+                if ku.key_agreement:
+                    flags.append("keyAgreement")
+                if ku.key_cert_sign:
+                    flags.append("keyCertSign")
+                if ku.crl_sign:
+                    flags.append("cRLSign")
                 ext_value = ", ".join(flags) if flags else ""
             elif ext_oid == "2.5.29.37":  # ExtendedKeyUsage
-                ekus = [EKU_OID_TO_NAME.get(o.dotted_string, o.dotted_string) for o in ext.value]
+                eku_ext: x509.ExtendedKeyUsage = ext.value  # type: ignore[assignment]
+                ekus: list[str] = [EKU_OID_TO_NAME.get(o.dotted_string, o.dotted_string) for o in eku_ext]  # type: ignore[assignment]
                 ext_value = ", ".join(ekus)
             elif ext_oid == "2.5.29.17":  # SubjectAlternativeName
                 san_list = []
-                for name in ext.value:
+                san_value: x509.SubjectAlternativeName = ext.value  # type: ignore[assignment]
+                for name in san_value:
                     if isinstance(name, x509.DNSName):
                         san_list.append(f"DNS:{name.value}")
                     elif isinstance(name, x509.RFC822Name):
@@ -425,6 +447,7 @@ def extract_certificate_metadata(
         "subject_common_name": _get_attr(NameOID.COMMON_NAME),
         "subject_email": _get_attr(NameOID.EMAIL_ADDRESS),
         "serial_number": serial_number,
+        "fingerprint_sha256": fingerprint_sha256,
         "not_before": not_before.strftime("%Y-%m-%d %H:%M:%S"),
         "not_after": not_after.strftime("%Y-%m-%d %H:%M:%S"),
         "key_algorithm": key_algorithm,
@@ -647,7 +670,7 @@ _CERT_INSERT_KEYS = {
     "organization_id", "cert_name", "cert_type", "issuer_cert_id",
     "subject_country", "subject_state", "subject_locality", "subject_organization",
     "subject_org_unit", "subject_common_name", "subject_email",
-    "serial_number", "not_before", "not_after",
+    "serial_number", "fingerprint_sha256", "not_before", "not_after",
     "key_algorithm", "key_size", "ec_curve", "signature_hash",
     "cert_path", "key_path", "csr_path", "pwd_path",
 }
@@ -672,7 +695,7 @@ def create_certificate_with_extensions(cert_info: dict) -> int:
                 organization_id, cert_name, cert_type, issuer_cert_id,
                 subject_country, subject_state, subject_locality, subject_organization,
                 subject_org_unit, subject_common_name, subject_email,
-                serial_number, not_before, not_after,
+                serial_number, fingerprint_sha256, not_before, not_after,
                 key_algorithm, key_size, ec_curve, signature_hash,
                 cert_path, key_path, csr_path, pwd_path,
                 created_at, updated_at
@@ -680,7 +703,7 @@ def create_certificate_with_extensions(cert_info: dict) -> int:
             VALUES (
                 :cert_uuid, :organization_id, :cert_name, :cert_type, :issuer_cert_id,
                 :subject_country, :subject_state, :subject_locality, :subject_organization, :subject_org_unit, :subject_common_name, :subject_email,
-                :serial_number, :not_before, :not_after,
+                :serial_number, :fingerprint_sha256, :not_before, :not_after,
                 :key_algorithm, :key_size, :ec_curve, :signature_hash,
                 :cert_path, :key_path, :csr_path, :pwd_path,
                 CURRENT_TIMESTAMP, CURRENT_TIMESTAMP
@@ -721,7 +744,7 @@ def create_certificate_with_extensions_and_revoke(
                 cert_uuid, organization_id, cert_name, cert_type, issuer_cert_id,
                 subject_country, subject_state, subject_locality, subject_organization,
                 subject_org_unit, subject_common_name, subject_email,
-                serial_number, not_before, not_after,
+                serial_number, fingerprint_sha256, not_before, not_after,
                 key_algorithm, key_size, ec_curve, signature_hash,
                 cert_path, key_path, csr_path, pwd_path,
                 created_at, updated_at
@@ -729,7 +752,7 @@ def create_certificate_with_extensions_and_revoke(
                 :cert_uuid, :organization_id, :cert_name, :cert_type, :issuer_cert_id,
                 :subject_country, :subject_state, :subject_locality, :subject_organization,
                 :subject_org_unit, :subject_common_name, :subject_email,
-                :serial_number, :not_before, :not_after,
+                :serial_number, :fingerprint_sha256, :not_before, :not_after,
                 :key_algorithm, :key_size, :ec_curve, :signature_hash,
                 :cert_path, :key_path, :csr_path, :pwd_path,
                 CURRENT_TIMESTAMP, CURRENT_TIMESTAMP
@@ -886,7 +909,9 @@ def log_certificate_operation(
     certificate_id: Optional[int],
     operation: str,
     user_name: Optional[str] = None,
-    details: Optional[str] = None
+    details: Optional[str] = None,
+    ip_address: Optional[str] = None,
+    user_role: Optional[str] = None,
 ) -> int:
     """
     Log a certificate operation to the audit log.
@@ -896,6 +921,8 @@ def log_certificate_operation(
         operation: Operation type ('created', 'revoked', 'renewed', etc.)
         user_name: Username performing the operation
         details: Additional details as JSON string
+        ip_address: IPv4/IPv6 address of the requester
+        user_role: Role of the requester at time of action
 
     Returns:
         The ID of the audit log entry
@@ -904,13 +931,15 @@ def log_certificate_operation(
         result = conn.execute(
             text("""
             INSERT INTO certificate_audit_log
-            (certificate_id, operation, operation_timestamp, user_name, details)
-            VALUES (:certificate_id, :operation, CURRENT_TIMESTAMP, :user_name, :details)
+            (certificate_id, operation, operation_timestamp, user_name, ip_address, user_role, details)
+            VALUES (:certificate_id, :operation, CURRENT_TIMESTAMP, :user_name, :ip_address, :user_role, :details)
             """),
             {
                 "certificate_id": certificate_id,
                 "operation": operation,
                 "user_name": user_name,
+                "ip_address": ip_address,
+                "user_role": user_role,
                 "details": details,
             }
         )
@@ -935,6 +964,7 @@ def get_recent_audit_logs(org_id: int, limit: int = 20) -> List[Dict[str, Any]]:
                 cal.operation,
                 cal.operation_timestamp AS created_at,
                 cal.user_name,
+                cal.ip_address,
                 cal.details,
                 c.id AS certificate_id,
                 c.cert_name,
@@ -1301,11 +1331,13 @@ def check_database_health() -> Dict[str, Any]:
         with get_db_connection() as conn:
             # Count organizations
             result = conn.execute(text("SELECT COUNT(*) as count FROM organizations"))
-            org_count = result.mappings().fetchone()['count']
+            org_row = result.mappings().fetchone()
+            org_count = org_row['count'] if org_row else 0
 
             # Count certificates
             result = conn.execute(text("SELECT COUNT(*) as count FROM certificates"))
-            cert_count = result.mappings().fetchone()['count']
+            cert_row = result.mappings().fetchone()
+            cert_count = cert_row['count'] if cert_row else 0
 
             return {
                 'status': 'healthy',

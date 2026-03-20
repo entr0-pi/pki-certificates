@@ -33,7 +33,7 @@ def set_private_perms(private_dir: Path) -> None:
 # ---------- crypto / misc helpers ----------
 
 def random_password(length: int = 32) -> str:
-    alphabet = string.ascii_letters + string.digits
+    alphabet = string.ascii_letters + string.digits + "!@#$%^&*-_=+"
     return "".join(secrets.choice(alphabet) for _ in range(length)) + "\n"
 
 

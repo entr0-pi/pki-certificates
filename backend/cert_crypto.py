@@ -130,7 +130,12 @@ def get_name_attr(name: x509.Name, field: str) -> str:
     attrs = name.get_attributes_for_oid(oid)
     if not attrs:
         return ""
-    return attrs[0].value.strip()
+    val = attrs[0].value
+    if isinstance(val, str):
+        return val.strip()
+    if isinstance(val, (bytes, bytearray)):
+        return bytes(val).decode('utf-8').strip()
+    return str(val).strip()
 
 
 def enforce_policy_subject(
@@ -217,8 +222,8 @@ def parse_key_usage(usage_string: str) -> Tuple[x509.KeyUsage, bool]:
         key_agreement=usage_flags["keyagreement"],
         key_cert_sign=usage_flags["keycertsign"],
         crl_sign=usage_flags["crlsign"],
-        encipher_only=None,
-        decipher_only=None,
+        encipher_only=False,
+        decipher_only=False,
     ), is_critical
 
 
@@ -378,7 +383,7 @@ def save_private_key(
 def load_private_key(
     path: Path,
     passphrase: bytes
-) -> Union[ec.EllipticCurvePrivateKey, rsa.RSAPrivateKey]:
+):
     """Load encrypted private key from file."""
     key_data = file_crypto.read_encrypted(path)
     return serialization.load_pem_private_key(key_data, password=passphrase)
@@ -405,7 +410,7 @@ def create_csr(
     if san:
         builder = builder.add_extension(san, critical=False)
 
-    return builder.sign(key, hash_algo)
+    return builder.sign(key, hash_algo)  # type: ignore[arg-type]
 
 
 # ---------------------------
@@ -504,7 +509,7 @@ def build_and_sign_certificate(
 
     # Add all extensions
     for ext, critical in extensions:
-        builder = builder.add_extension(ext, critical=critical)
+        builder = builder.add_extension(ext, critical=critical)  # type: ignore[arg-type]
 
     # Sign certificate
-    return builder.sign(issuer_key, hash_algo)
+    return builder.sign(issuer_key, hash_algo)  # type: ignore[arg-type]

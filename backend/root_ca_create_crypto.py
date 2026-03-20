@@ -5,6 +5,7 @@ import os
 import sys
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
+from typing import cast
 
 from cryptography import x509
 from cryptography.hazmat.primitives import serialization
@@ -60,10 +61,10 @@ def main() -> None:
     fs_password = fs_password_bytes.hex()
 
     # Store filesystem password in .pwd.enc
-    ws["pwd_path"].parent.mkdir(parents=True, exist_ok=True)
-    file_crypto.write_encrypted(ws["pwd_path"], (fs_password + "\n").encode())
+    cast(Path, ws["pwd_path"]).parent.mkdir(parents=True, exist_ok=True)
+    file_crypto.write_encrypted(cast(Path, ws["pwd_path"]), (fs_password + "\n").encode())
     if os.name == "posix":
-        ws["pwd_path"].chmod(0o600)
+        cast(Path, ws["pwd_path"]).chmod(0o600)
 
     # Derive effective passphrase using HMAC-SHA256
     effective_passphrase = cert_crypto.derive_root_key_password(
@@ -109,14 +110,14 @@ def main() -> None:
     # Encrypt root private key with effective passphrase (derived from fs_password + user_password)
     cert_crypto.save_private_key(
         key,
-        ws["key_path"],
+        cast(Path, ws["key_path"]),
         effective_passphrase,
         cipher_name
     )
 
     # 2) CSR
     csr = cert_crypto.create_csr(key, subject, san, req_hash)
-    file_crypto.write_encrypted(ws["csr_path"], csr.public_bytes(serialization.Encoding.PEM))
+    file_crypto.write_encrypted(cast(Path, ws["csr_path"]), csr.public_bytes(serialization.Encoding.PEM))
 
     # 3) Self-signed Root certificate
     now = datetime.now(timezone.utc)
@@ -140,16 +141,16 @@ def main() -> None:
         extensions=extensions,
         hash_algo=ca_hash
     )
-    file_crypto.write_encrypted(ws["crt_path"], cert.public_bytes(serialization.Encoding.PEM))
+    file_crypto.write_encrypted(cast(Path, ws["crt_path"]), cert.public_bytes(serialization.Encoding.PEM))
 
     # Validate + print (expects ws dict keys exactly like this)
     # Pass user_password for root CA to derive HMAC key for private key validation
     validate_and_print(
         ws,
-        key_path=ws["key_path"],
-        cert_path=ws["crt_path"],
-        csr_path=ws["csr_path"],
-        pwd_path=ws["pwd_path"],
+        key_path=cast(Path, ws["key_path"]),
+        cert_path=cast(Path, ws["crt_path"]),
+        csr_path=cast(Path, ws["csr_path"]),
+        pwd_path=cast(Path, ws["pwd_path"]),
         title=f"Key information for: {cert_name}",
         user_password=root_user_password,
     )

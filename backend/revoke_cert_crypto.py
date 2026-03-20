@@ -12,7 +12,7 @@ from pathlib import Path
 from cryptography import x509
 from cryptography.hazmat.primitives import hashes, serialization
 
-from helpers import load_json
+from helpers import load_json, load_policy
 from folder import PkiLayout
 import cert_crypto
 import file_crypto
@@ -79,6 +79,7 @@ def generate_crl(
     crl_output_path: Path,
     revoked_list: list[dict],
     override_passphrase: bytes | None = None,
+    crl_days: int = 3650,
 ) -> None:
     """
     Generate a Certificate Revocation List (CRL).
@@ -115,7 +116,7 @@ def generate_crl(
         x509.CertificateRevocationListBuilder()
         .issuer_name(issuer_cert.subject)
         .last_update(now)
-        .next_update(now + timedelta(days=3650))
+        .next_update(now + timedelta(days=crl_days))
     )
 
     # Add revoked certificates
@@ -136,12 +137,12 @@ def generate_crl(
 
     # Add Authority Key Identifier extension
     builder = builder.add_extension(
-        x509.AuthorityKeyIdentifier.from_issuer_public_key(issuer_key.public_key()),
+        x509.AuthorityKeyIdentifier.from_issuer_public_key(issuer_key.public_key()),  # type: ignore[arg-type]
         critical=False,
     )
 
     # Sign and write CRL
-    crl = builder.sign(issuer_key, hashes.SHA384())
+    crl = builder.sign(issuer_key, hashes.SHA384())  # type: ignore[arg-type]
     crl_output_path.parent.mkdir(parents=True, exist_ok=True)
     file_crypto.write_encrypted(crl_output_path, crl.public_bytes(serialization.Encoding.PEM))
 
@@ -170,6 +171,18 @@ def main() -> None:
     issuer_type = params["issuer_type"]
     revoked_certs = params.get("revoked_certs", [])
 
+    # Load DEFAULT_CRL_DAYS from policy (role-specific)
+    project_root = Path(__file__).resolve().parent.parent
+    policy_path = project_root / "backend" / layout.policy_filename
+    crl_days = 3650  # fallback if policy is unavailable
+    if policy_path.exists():
+        try:
+            policy_data, _, _ = load_policy(policy_path)
+            role_key = "root" if issuer_type == "root" else "intermediate"
+            crl_days = int(policy_data["role_defaults"][role_key].get("DEFAULT_CRL_DAYS", 3650))
+        except Exception:
+            pass
+
     root_user_password = params.get("root_user_password")
     override_passphrase = None
     if issuer_type == "root":
@@ -192,6 +205,7 @@ def main() -> None:
             crl_output_path=issuer_paths["crl_path"],
             revoked_list=revoked_certs,
             override_passphrase=override_passphrase,
+            crl_days=crl_days,
         )
 
     except Exception as e:
