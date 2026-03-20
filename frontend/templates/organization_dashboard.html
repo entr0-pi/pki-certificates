@@ -245,13 +245,14 @@
                     {% if audit_logs %}
                     <div class="overflow-x-auto max-h-72 overflow-y-auto">
                         <table class="table table-zebra table-sm">
-                            <thead><tr><th>Certificate</th><th>Operation</th><th>User</th><th>Date</th><th>Details</th></tr></thead>
+                            <thead><tr><th>Certificate</th><th>Operation</th><th>User</th><th>IP</th><th>Date</th><th>Details</th></tr></thead>
                             <tbody>
                                 {% for log in audit_logs %}
                                 <tr>
                                     <td>{{ log.cert_name }}</td>
                                     <td class="capitalize">{{ log.operation }}</td>
                                     <td>{{ log.user_name or "-" }}</td>
+                                    <td class="text-xs font-mono">{{ log.ip_address or "-" }}</td>
                                     <td class="text-xs">{{ log.created_at }}</td>
                                     <td class="text-xs">{{ log.details or "-" }}</td>
                                 </tr>
