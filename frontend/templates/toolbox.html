@@ -9,9 +9,9 @@
 <body class="bg-base-200 min-h-screen p-6">
     <div class="container mx-auto max-w-6xl">
         {% if restore == 'ok' %}
-        <div class="alert alert-success mb-4">Backup restored successfully.</div>
+        <div class="alert alert-success">Backup restored successfully.</div>
         {% elif restore == 'error' %}
-        <div class="alert alert-error mb-4">Restore failed: {{ restore_detail }}</div>
+        <div class="alert alert-error">Restore failed: {{ restore_detail }}</div>
         {% endif %}
 
         <div class="card bg-base-100 shadow-xl mb-6">
@@ -19,68 +19,109 @@
                 <a href="/" class="btn btn-ghost btn-sm w-fit mb-2">&lt; Back</a>
                 <span class="uppercase tracking-[0.4em] text-xs text-base-content/60">Utilities</span>
                 <h1 class="text-4xl font-semibold">Toolbox</h1>
-                <p class="text-base-content/70">Operational tools will be added here progressively.</p>
+                <p class="text-base-content/70 max-w-3xl">
+                    Backup management and OpenSSL revocation verification reference.
+                </p>
             </div>
         </div>
 
-        <div class="flex gap-6 mt-6 flex-wrap">
-            <div class="card bg-base-100 shadow-xl flex-1 min-w-80">
-                <div class="card-body">
-                    <h2 class="card-title">Full Backup</h2>
-                    <p class="text-base-content/70">
-                        Download a ZIP archive containing a consistent database snapshot and all encrypted certificate files.
-                        Safe to run while the application is live.
-                    </p>
-                    <div class="card-actions">
-                        <a href="/admin/backup/database" class="btn btn-primary btn-sm">
-                            Export Full Backup
-                        </a>
+        <div class="card bg-base-100 shadow-xl mb-6">
+            <div class="card-body gap-6">
+                <div class="flex items-start justify-between gap-4 flex-col lg:flex-row">
+                    <div>
+                        <h3 class="card-title">Backup Management</h3>
+                        <p class="text-sm text-base-content/70 max-w-2xl">
+                            Export a complete encrypted snapshot of the live system or restore the application state
+                            from a previously exported archive.
+                        </p>
+                    </div>
+                </div>
+
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+                    <div class="card bg-base-200 border border-base-300">
+                        <div class="card-body">
+                            <div class="flex items-center justify-between gap-3">
+                                <h4 class="card-title text-lg">Full Backup</h4>
+                            </div>
+                            <p class="text-base-content/70">
+                                Download a ZIP archive containing a consistent database snapshot and all encrypted
+                                certificate files.
+                            </p>
+                            <div class="card-actions justify-start mt-2 w-full">
+                                <a href="/admin/backup/database" class="btn btn-primary btn-sm w-full">
+                                    Export Full Backup
+                                </a>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="card bg-warning/10 border border-warning/30">
+                        <div class="card-body">
+                            <div class="flex items-center justify-between gap-3">
+                                <h4 class="card-title text-lg">Restore from Backup</h4>
+                            </div>
+                            <p class="text-base-content/70">
+                                Upload a previously exported ZIP backup to restore the database and encrypted
+                                certificate files with an atomic swap.
+                            </p>
+                            <div class="rounded-lg border border-error/30 bg-error/10 px-4 py-3 text-sm text-error-content">
+                                <span class="font-semibold text-error">Warning:</span>
+                                <span class="text-base-content"> This replaces all live data and cannot be undone.</span>
+                            </div>
+                            <form method="post" action="/admin/restore/database"
+                                  enctype="multipart/form-data" class="flex flex-col sm:flex-row sm:items-end gap-4 mt-1">
+                                <label class="form-control w-full sm:flex-1">
+                                    <span class="label-text text-sm font-medium">Select backup ZIP file</span>
+                                    <input type="file" name="backup_file" accept=".zip"
+                                           class="file-input file-input-bordered file-input-sm w-full" required />
+                                </label>
+                                <div class="card-actions justify-start w-full sm:w-auto sm:flex-1 sm:self-end">
+                                    <button type="submit" class="btn btn-warning btn-sm w-full">
+                                        Restore Backup
+                                    </button>
+                                </div>
+                            </form>
+                        </div>
                     </div>
                 </div>
             </div>
-
-            <div class="card bg-base-100 shadow-xl flex-1 min-w-80">
-                <div class="card-body">
-                    <h2 class="card-title">Restore from Backup</h2>
-                    <p class="text-base-content/70">
-                        Upload a previously exported ZIP backup to restore the database and all
-                        encrypted certificate files. The server performs an atomic swap — safe to
-                        run while the application is live. <strong>This operation replaces all live
-                        data and cannot be undone.</strong>
-                    </p>
-                    <form method="post" action="/admin/restore/database"
-                          enctype="multipart/form-data" class="flex items-center gap-3 mt-2">
-                        <input type="file" name="backup_file" accept=".zip"
-                               class="file-input file-input-bordered file-input-sm" required />
-                        <button type="submit" class="btn btn-warning btn-sm">
-                            Restore Backup
-                        </button>
-                    </form>
-                </div>
-            </div>
         </div>
 
-        <div class="card bg-base-100 shadow-xl mt-6">
-            <div class="card-body">
-                <h2 class="card-title">OpenSSL Revocation Check</h2>
-                <p class="text-base-content/70">
-                    Use the following OpenSSL command to verify that an end-user certificate (and the intermediate) is not revoked:
-                </p>
-                <pre class="bg-base-200 rounded p-4 overflow-x-auto text-sm"><code>openssl verify -crl_check_all -CAfile root.pem -untrusted intermediate.pem -CRLfile crl-bundle.pem certificate.pem</code></pre>
-                <p class="text-base-content/70">
-                    Or alternatively, you can concatenate all the necessary files into one and run the command like this:
-                </p>
-                <pre class="bg-base-200 rounded p-4 overflow-x-auto text-sm"><code>openssl verify -crl_check_all -CAfile full.pem certificate.pem</code></pre>
-                <p class="text-base-content/70">
-                    With the following files:
-                </p>
-                <ul class="list-disc text-base-content/70 space-y-1">
-                    <li><code>root.pem</code> is the root certificate.</li>
-                    <li><code>intermediate.pem</code> is the intermediate certificate.</li>
-                    <li><code>crl-bundle.pem</code> is the CRL bundle for the root and intermediate certificates.</li>
-                    <li><code>full.pem</code> is the concatenation of all of them.</li>
-                    <li><code>certificate.pem</code> is the target fcertificate.</li>
-                </ul>
+        <div class="card bg-base-100 shadow-xl border border-base-300/60 mb-6">
+            <div class="card-body gap-5">
+                <div>
+                    <h3 class="card-title">Useful OpenSSL Commands</h3>
+                    <p class="text-sm text-base-content/70">
+                        Reference commands for certificate validation and troubleshooting.
+                    </p>
+                </div>
+
+                <div class="grid grid-cols-1 lg:grid-cols-2 gap-4">
+                    <div class="card bg-base-200 border border-base-300">
+                        <div class="card-body gap-3">
+                            <h4 class="text-sm font-semibold uppercase tracking-[0.2em] text-base-content/60">Verifying CRL</h4>
+                            <pre class="bg-base-100 rounded p-4 overflow-x-auto text-sm"><code>openssl verify -crl_check_all -CAfile root.pem -untrusted intermediate.pem -CRLfile crl-bundle.pem certificate-to-verify.pem</code></pre>
+                            <pre class="bg-base-100 rounded p-4 overflow-x-auto text-sm"><code>openssl verify -crl_check_all -CAfile full-including-crl-bundle.pem certificate-to-verify.pem</code></pre>
+                            <pre class="bg-base-100 rounded p-4 overflow-x-auto text-sm"><code>openssl verify -crl_download -crl_check_all -CAfile root.pem -untrusted intermediate.pem certificate-to-verify.pem</code></pre>
+                        </div>
+                    </div>
+
+                    <div class="card bg-base-200 border border-base-300">
+                        <div class="card-body gap-3">
+                            <h4 class="text-sm font-semibold uppercase tracking-[0.2em] text-base-content/60">Inspecting Certificates</h4>
+                            <pre class="bg-base-100 rounded p-4 overflow-x-auto text-sm"><code>openssl x509 -in certificate-to-inspect.pem -text -noout</code></pre>
+                            <pre class="bg-base-100 rounded p-4 overflow-x-auto text-sm"><code>openssl x509 -in certificate-to-inspect.pem -noout -dates</code></pre>
+                            <pre class="bg-base-100 rounded p-4 overflow-x-auto text-sm"><code>openssl x509 -in certificate-to-inspect.pem -noout -subject -issuer -serial</code></pre>
+                        </div>
+                    </div>
+
+                    <div class="card bg-base-200 border border-base-300">
+                        <div class="card-body gap-3">
+                            <h4 class="text-sm font-semibold uppercase tracking-[0.2em] text-base-content/60">Inspecting CRL</h4>
+                            <pre class="bg-base-100 rounded p-4 overflow-x-auto text-sm"><code>openssl crl -in crl-to-inspect.pem -text -noout</code></pre>
+                        </div>
+                    </div>
+                </div>
             </div>
         </div>
     </div>

@@ -372,20 +372,41 @@ Legend: `✓` allowed, `-` denied, `public` no auth required.
 - Query params (optional):
 ```json
 {
-  "issuer_cert_id": 12
+  "issuer_cert_id": 12,
+  "format": "pem"
 }
 ```
-- Response JSON: none (CRL file download)
+- Allowed `format`: `pem` (default), `der`
+- Response JSON: none (CRL file download in requested format)
+- Notes: Returns the CRL for a specific issuer. Default format is PEM; specify `?format=der` for DER-encoded CRL.
 
 ### `GET /organizations/{org_id}/crl/download`
 - Auth required: no (public CRL endpoint for certificate validators)
 - Request JSON: none
-- Response JSON: none (CRL file download)
+- Query params (optional):
+```json
+{
+  "format": "pem"
+}
+```
+- Allowed `format`: `pem` (default), `der`
+- Response JSON: none (CRL file download in requested format)
+- Notes: Returns the preferred organization CRL (intermediate first, then root). Default format is PEM; specify `?format=der` for DER-encoded CRL.
 
 ### `GET /organizations/{org_id}/crl/bundle`
 - Auth required: no (public CRL bundle endpoint for certificate validators)
 - Request JSON: none
-- Response JSON: none (PEM bundle containing all available organization CRLs)
+- Query params (optional):
+```json
+{
+  "format": "pem"
+}
+```
+- Allowed `format`: `pem` (default), `der`
+- Response JSON: none (CRL bundle in requested format)
+- Notes: Returns a bundle containing all available organization CRLs (intermediates first, then roots).
+  - **PEM format** (default): Multiple PEM blocks separated by newlines, suitable for most clients and OpenSSL.
+  - **DER format** (`?format=der`): ASN.1 SEQUENCE containing multiple DER-encoded CRLs. OpenSSL's `crl` command expects a single CRL; use `asn1parse` to inspect the structure or extract individual CRLs programmatically.
 
 ### `GET /healthz`
 - Auth required: no

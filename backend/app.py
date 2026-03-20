@@ -17,6 +17,7 @@ import zipfile
 from contextlib import asynccontextmanager
 from datetime import date
 from pathlib import Path
+from typing import Literal
 
 from cryptography import x509
 from cryptography.hazmat.primitives import serialization
@@ -34,7 +35,8 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from sqlalchemy.exc import IntegrityError as SAIntegrityError
 
-load_dotenv()
+_APP_PROJECT_ROOT = Path(__file__).resolve().parent.parent
+load_dotenv(_APP_PROJECT_ROOT / ".env", override=True)
 
 # Import ConsistencyChecker at module level to avoid sys.path manipulation in handlers
 # This is done once at startup, not per-request
@@ -1990,7 +1992,7 @@ async def renew_certificate_page(request: Request, org_id: int, cert_id: int):
 
 @app.get("/organizations/{org_id}/crl/{issuer_name}")
 async def download_crl(
-    org_id: int, issuer_name: str, issuer_cert_id: int | None = Query(default=None)
+    org_id: int, issuer_name: str, issuer_cert_id: int | None = Query(default=None), format: Literal["pem", "der"] = Query(default="pem")
 ):
     """
     Serve latest CRL file for an issuer scoped to one organization.
@@ -1999,7 +2001,7 @@ async def download_crl(
     if issuer_name == "download":
         return await download_org_crl(org_id)
     if issuer_name == "bundle":
-        return await download_org_crl_bundle(org_id)
+        return await download_org_crl_bundle(org_id, format=format)
 
     org = db.get_organization_by_id(org_id)
     if not org:
@@ -2019,6 +2021,17 @@ async def download_crl(
         return Response(content="CRL not found for issuer", status_code=404)
 
     crl_content = file_crypto.read_encrypted(crl_path)
+
+    if format == "der":
+        crl_content = _pem_to_der_crl(crl_content)
+        return Response(
+            content=crl_content,
+            media_type="application/pkix-crl",
+            headers={
+                "Content-Disposition": f'attachment; filename="{issuer_name}.crl.der"'
+            },
+        )
+
     return Response(
         content=crl_content,
         media_type="application/pkix-crl",
@@ -2144,6 +2157,35 @@ def _resolve_crl_path_for_cert(org: dict, cert: dict) -> Path | None:
     return path if path.exists() else None
 
 
+def _pem_to_der_crl(pem_bytes: bytes) -> bytes:
+    """Convert PEM-encoded CRL to DER format."""
+    from cryptography.x509 import load_pem_x509_crl
+    from cryptography.hazmat.primitives import serialization
+    crl = load_pem_x509_crl(pem_bytes)
+    return crl.public_bytes(serialization.Encoding.DER)
+
+
+def _wrap_der_sequence(der_objects: list[bytes]) -> bytes:
+    """Wrap multiple DER objects in ASN.1 SEQUENCE for proper bundling."""
+    # Encode as SEQUENCE: tag (0x30) + length + contents
+    contents = b"".join(der_objects)
+    length = len(contents)
+
+    # Encode length in DER format
+    if length < 128:
+        # Short form: single byte
+        return b"\x30" + bytes([length]) + contents
+    elif length < 256:
+        # Long form: 0x81 + 1 byte
+        return b"\x30\x81" + bytes([length]) + contents
+    elif length < 65536:
+        # Long form: 0x82 + 2 bytes
+        return b"\x30\x82" + length.to_bytes(2, "big") + contents
+    else:
+        # Long form: 0x83 + 3 bytes
+        return b"\x30\x83" + length.to_bytes(3, "big") + contents
+
+
 @app.get(
     "/api/organizations/{org_id}/crls",
     response_model=list[dict],
@@ -2237,10 +2279,14 @@ async def download_org_crl(org_id: int):
 
 
 @app.get("/organizations/{org_id}/crl/bundle")
-async def download_org_crl_bundle(org_id: int):
+async def download_org_crl_bundle(
+    org_id: int,
+    format: Literal["pem", "der"] = Query(default="pem"),
+):
     """
-    Download all available CRLs for the organization as a single PEM bundle.
+    Download all available CRLs for the organization as a single bundle.
     Order: intermediate CRL(s) first, then root CRL.
+    format: "pem" (default) or "der"
     """
     org = db.get_organization_by_id(org_id)
     if not org:
@@ -2274,6 +2320,16 @@ async def download_org_crl_bundle(org_id: int):
         return Response(
             content="No CRLs available yet. Revoke a certificate first.",
             status_code=404,
+        )
+
+    if format == "der":
+        # Convert each PEM CRL to DER and wrap in SEQUENCE for proper bundling
+        der_parts = [_pem_to_der_crl(pem) for pem in crl_pems]
+        bundle_der = _wrap_der_sequence(der_parts)
+        return Response(
+            content=bundle_der,
+            media_type="application/pkix-crl",
+            headers={"Content-Disposition": 'attachment; filename="crl-bundle.der"'},
         )
 
     bundle = b"\n\n".join(crl_pems) + b"\n"

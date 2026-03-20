@@ -23,7 +23,7 @@ This application provides a complete, self-hosted certificate authority (CA) man
 - **Role-Based Access Control** — Three roles (admin, manager, user) with granular permissions for creation, renewal, revocation, and downloads.
 - **Certificate Revocation Lists** — Automatic CRL generation and distribution when certificates are revoked; public endpoints for external validators.
 - **Encrypted Storage** — Certificate private keys and sensitive data encrypted at rest; decryption only on demand.
-- **Audit Logging** — Track all certificate operations (creation, renewal, revocation) with user attribution and timestamps.
+- **Audit Logging** — Track all certificate operations (creation, renewal, revocation, downloads) with user attribution, role, client IP address, and timestamps. The Recent Operations panel on the dashboard displays IP alongside each event.
 - **Backup & Restore** — Export and restore full backups (database + certificate storage) from the Toolbox without server restart; atomic swaps ensure consistency.
 - **Policy-Driven Defaults** — Enforce certificate constraints (validity periods, key algorithms, SAN validation, and root password minimum length) via centralized policy configuration.
 
@@ -184,51 +184,58 @@ If you only run the app and do not change templates or frontend dependencies, th
 
 ```text
 backend/
-  app.py                    FastAPI entrypoint and route handlers
-  auth.py                   Session auth and RBAC helpers
-  db.py                     Database access layer
-  path_config.py            Path resolution for data/db locations
-  cert_crypto.py            Shared certificate utilities
-  revoke_cert_crypto.py     Revocation and CRL generation
-  root_ca_create_crypto.py
-  intermediate_ca_create_crypto.py
-  end_entity_create_crypto.py
-  logging_config.py         Centralized ISO 8601 logging configuration
-  uvicorn_log_config.py     Reference documentation for Uvicorn logging config structure
+  app.py                           FastAPI entrypoint and route handlers
+  auth.py                          Session auth and RBAC helpers
+  db.py                            Database access layer (schema v3)
+  path_config.py                   Path resolution for data/db locations
+  file_crypto.py                   AES-256-GCM encryption/decryption for all certificate artifacts
+  cert_crypto.py                   Shared certificate utilities
+  root_ca_create_crypto.py         Root CA generation
+  intermediate_ca_create_crypto.py Intermediate CA generation
+  end_entity_create_crypto.py      End-entity certificate generation (server, client, email, OCSP)
+  revoke_cert_crypto.py            Revocation and CRL generation
+  root_ca_validate.py              Certificate/CSR/key loading and signature verification helpers
+  folder.py                        PKI directory layout management and workspace initialization
+  helpers.py                       Shared utilities (dirs, permissions, password gen, OpenSSL wrappers)
+  create_cert.py                   CLI entrypoint for certificate creation
+  logging_config.py                Centralized ISO 8601 logging configuration
+  uvicorn_log_config.py            Reference documentation for Uvicorn logging config structure
   config/
-    policy.json             Certificate policy, defaults, and root password length requirements
-    rbac.json               Route-to-role authorization map
+    policy.json                    Certificate policy, defaults, and root password length requirements
+    rbac.json                      Route-to-role authorization map
   openssl/
-    config.txt              OpenSSL config assets (for reference only, not used)
+    config.txt                     OpenSSL config assets (for reference only, not used)
 
 frontend/
-  templates/                Jinja HTML templates
+  templates/                       Jinja HTML templates
   static/
-    src/input.css           Tailwind source file
-    vendor/bundle.css       Built CSS served by FastAPI
-    *.js                    Small UI behaviors
+    src/input.css                  Tailwind source file
+    vendor/bundle.css              Built CSS served by FastAPI
+    *.js                           Small UI behaviors
 
 database/
-  pki_schema.sql            SQLite schema
-  pki.db                    Runtime database file
+  pki_schema.sql                   SQLite schema (v3: fingerprint_sha256, audit IP/role, composite indexes)
 
 docs/
-  *.md                      Operational, security, API, and frontend docs
+  *.md                             Operational, security, API, and frontend docs
 
 tests/
   conftest.py
-  requirements-dev.txt      Test-only Python dependencies
-  test_*.py                 Backend and UI workflow coverage
+  requirements-dev.txt             Test-only Python dependencies
+  test_*.py                        Backend and UI workflow coverage
 
 scripts/
-  init_db.py                Database initialization helper
+  init_db.py                       Database initialization helper
 
 utils/
-  generate_env.py           Creates `.env` from `.env.example` and generates secret values
+  generate_env.py                  Creates `.env` from `.env.example` and generates secret values
+  encryption_manager.py            CLI tool to decrypt or rotate encrypted PKI artifacts
+  README.md                        Usage instructions for utils scripts
 
-package.json                npm scripts for frontend asset builds
-tailwind.config.js          Tailwind/DaisyUI configuration
-requirements.txt            Python runtime dependencies
+.env.example                       Environment file (example)
+package.json                       npm scripts for frontend asset builds
+tailwind.config.js                 Tailwind/DaisyUI configuration
+requirements.txt                   Python runtime dependencies
 ```
 
 ## Technical Documentation
@@ -258,4 +265,4 @@ Install optional test dependencies from `tests/requirements-dev.txt` if your env
 - Back up both the database and encrypted certificate storage regularly using the **Backup and Restore** features in the Toolbox (admin only). You can download backups and restore them at any time without requiring a server restart. Alternatively, manually archive the `database/` and `data/` directories.
 - Review [docs/SECURITY.md](docs/SECURITY.md) before deploying outside local development.
 
-Last update: 2026 03 18 — Backup export and restore features added
+Last update: 2026 03 20 — Database hardening: SHA-256 fingerprint stored per certificate; audit log enriched with client IP address and user role; composite indexes added for common query patterns (org+status, status+expiry, issuer+status, CRL issuer); schema version bumped to v3

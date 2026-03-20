@@ -107,8 +107,13 @@ def load_dotenv(env_path: Path) -> dict[str, str]:
         line = line.strip()
         if not line or line.startswith("#") or "=" not in line:
             continue
+        if line.startswith("export "):
+            line = line[len("export "):].strip()
         k, _, v = line.partition("=")
-        result[k.strip()] = v.strip()
+        value = v.strip()
+        if len(value) >= 2 and value[0] == value[-1] and value[0] in ("'", '"'):
+            value = value[1:-1]
+        result[k.strip()] = value
     return result
 
 
@@ -324,6 +329,8 @@ def run_rotate(args: argparse.Namespace) -> int:
         try:
             plaintext   = decrypt_bytes(enc_file.read_bytes(), old_key)
             ciphertext  = encrypt_bytes(plaintext, new_key)
+            # Catch key-derivation or serialization issues before touching disk.
+            decrypt_bytes(ciphertext, new_key)
         except InvalidTag:
             print(f"  SKIP (InvalidTag - old key mismatch): {label}", file=sys.stderr)
             errors += 1
@@ -339,6 +346,7 @@ def run_rotate(args: argparse.Namespace) -> int:
             try:
                 tmp.write_bytes(ciphertext)
                 os.replace(tmp, enc_file)
+                decrypt_bytes(enc_file.read_bytes(), new_key)
             except Exception as exc:
                 tmp.unlink(missing_ok=True)
                 print(f"  SKIP (write error - {exc}): {label}", file=sys.stderr)
@@ -347,8 +355,14 @@ def run_rotate(args: argparse.Namespace) -> int:
             print(f"  OK  {label}  (rotated in-place)")
         else:
             dest = out_root / enc_file.relative_to(src)
-            dest.parent.mkdir(parents=True, exist_ok=True)
-            dest.write_bytes(ciphertext)
+            try:
+                dest.parent.mkdir(parents=True, exist_ok=True)
+                dest.write_bytes(ciphertext)
+                decrypt_bytes(dest.read_bytes(), new_key)
+            except Exception as exc:
+                print(f"  SKIP (write error - {exc}): {label}", file=sys.stderr)
+                errors += 1
+                continue
             print(f"  OK  {label}  ->  {dest.relative_to(out_root)}")
 
         done += 1
@@ -362,6 +376,8 @@ def run_rotate(args: argparse.Namespace) -> int:
         if hash_manifest.exists():
             hash_manifest.unlink()
             print(f"Removed stale hash manifest: {hash_manifest.relative_to(src.parent)}")
+        if in_place:
+            print("Rotation complete. Replace .env with the new credentials file and restart the app before reading .enc files.")
 
     return 1 if errors else 0
 
