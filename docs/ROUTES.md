@@ -378,7 +378,7 @@ Legend: `✓` allowed, `-` denied, `public` no auth required.
 ```
 - Allowed `format`: `pem` (default), `der`
 - Response JSON: none (CRL file download in requested format)
-- Notes: Returns the CRL for a specific issuer. Default format is PEM; specify `?format=der` for DER-encoded CRL.
+- Notes: Returns the CRL for a specific issuer in the requested format. Default is PEM; use `?format=der` for DER-encoded binary CRL. This endpoint is typically embedded in certificate CDP (CRL Distribution Point) extensions and accessed by certificate validators and OpenSSL's `crl_download` feature.
 
 ### `GET /organizations/{org_id}/crl/download`
 - Auth required: no (public CRL endpoint for certificate validators)
@@ -391,7 +391,7 @@ Legend: `✓` allowed, `-` denied, `public` no auth required.
 ```
 - Allowed `format`: `pem` (default), `der`
 - Response JSON: none (CRL file download in requested format)
-- Notes: Returns the preferred organization CRL (intermediate first, then root). Default format is PEM; specify `?format=der` for DER-encoded CRL.
+- Notes: Returns the preferred organization CRL (intermediate first, then root) in the requested format. Default is PEM; use `?format=der` for DER-encoded binary CRL. Useful for applications that need a single CRL endpoint without knowing the issuer name.
 
 ### `GET /organizations/{org_id}/crl/bundle`
 - Auth required: no (public CRL bundle endpoint for certificate validators)
@@ -404,9 +404,9 @@ Legend: `✓` allowed, `-` denied, `public` no auth required.
 ```
 - Allowed `format`: `pem` (default), `der`
 - Response JSON: none (CRL bundle in requested format)
-- Notes: Returns a bundle containing all available organization CRLs (intermediates first, then roots).
-  - **PEM format** (default): Multiple PEM blocks separated by newlines, suitable for most clients and OpenSSL.
-  - **DER format** (`?format=der`): ASN.1 SEQUENCE containing multiple DER-encoded CRLs. OpenSSL's `crl` command expects a single CRL; use `asn1parse` to inspect the structure or extract individual CRLs programmatically.
+- Notes: Returns a bundle containing all available organization CRLs (intermediates first, then roots) in the requested format.
+  - **PEM format** (default): Multiple PEM blocks separated by newlines, suitable for `openssl verify -CRLfile` and most PKI clients.
+  - **DER format** (`?format=der`): ASN.1 SEQUENCE of DER-encoded CRLs. Use this for structured binary bundling. OpenSSL's `crl` command expects a single CRL, not a SEQUENCE; use `asn1parse -in file.der -inform DER` to inspect the structure.
 
 ### `GET /healthz`
 - Auth required: no
