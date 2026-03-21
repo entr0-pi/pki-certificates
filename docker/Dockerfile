@@ -38,7 +38,6 @@ COPY --from=py-deps --chown=pki:pki /opt/venv /opt/venv
 COPY --chown=pki:pki backend/ /app/backend/
 COPY --chown=pki:pki frontend/ /app/frontend/
 COPY --chown=pki:pki scripts/ /app/scripts/
-COPY --chown=pki:pki database/ /app/database/
 COPY --chown=pki:pki scripts/start_webapp.sh /app/
 
 # Override CSS bundle with freshly built version from frontend-build stage
