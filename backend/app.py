@@ -1052,7 +1052,7 @@ async def create_organization_endpoint(
         # This eliminates race condition where two concurrent requests could derive the same folder name
         # Insert organization into database first to get guaranteed unique org_id
         org_id = db.create_organization(
-            org_dir="",  # Will be updated below after folder is created
+            org_dir="",
             name=org_display_name,
         )
 

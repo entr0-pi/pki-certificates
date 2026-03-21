@@ -2,6 +2,20 @@
 """
 Notify about expiring certificates via email, webhook, or log output.
 
+Usage:
+  1. Ensure the app environment variables are available in the shell
+     (for example by loading `.env` first).
+  2. Run a preview without sending notifications:
+       python scripts/notify_expiring.py --dry-run
+  3. Change the alert window if needed:
+       python scripts/notify_expiring.py --days 30 --dry-run
+  4. Send notifications by setting `NOTIFY_METHOD` to `log`, `email`, or `webhook`
+     and running without `--dry-run`.
+
+Examples:
+  python scripts/notify_expiring.py --dry-run
+  python scripts/notify_expiring.py --days 14
+
 Environment variables:
   NOTIFY_METHOD=email|webhook|log   (default: log)
   SMTP_HOST, SMTP_PORT, SMTP_USER, SMTP_PASS, EMAIL_TO
@@ -20,11 +34,14 @@ from email.message import EmailMessage
 from pathlib import Path
 from urllib import request
 
+from dotenv import load_dotenv
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 BACKEND_PATH = PROJECT_ROOT / "backend"
 if str(BACKEND_PATH) not in sys.path:
     sys.path.insert(0, str(BACKEND_PATH))
+
+load_dotenv(PROJECT_ROOT / ".env", override=True)
 
 import db  # noqa: E402
 

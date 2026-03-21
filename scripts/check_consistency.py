@@ -1526,7 +1526,6 @@ class ConsistencyChecker:
             self.stats["ku_mismatches"] +
             self.stats["eku_mismatches"] +
             self.stats["crl_mismatches"] +
-            # NEW: Data integrity metrics
             self.stats["crl_validity_failures"] +
             self.stats["uuid_missing"] +
             self.stats["uuid_invalid_format"] +
