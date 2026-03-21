@@ -621,7 +621,25 @@ def _get_request_role(request: Request) -> str | None:
 
 
 def _get_request_ip(request: Request) -> str | None:
-    """Extract client IP address from request for audit logging."""
+    """Extract client IP address from request for audit logging.
+
+    Handles reverse proxy scenarios by checking X-Forwarded-For,
+    X-Real-IP, and CF-Connecting-IP headers before falling back
+    to the direct connection IP.
+    """
+    # Check common reverse proxy headers
+    if "x-forwarded-for" in request.headers:
+        # X-Forwarded-For can contain multiple IPs; use the first one (real client)
+        return request.headers["x-forwarded-for"].split(",")[0].strip()
+
+    if "x-real-ip" in request.headers:
+        return request.headers["x-real-ip"].strip()
+
+    if "cf-connecting-ip" in request.headers:
+        # Cloudflare
+        return request.headers["cf-connecting-ip"].strip()
+
+    # Fallback to direct connection IP
     return request.client.host if request.client else None
 
 
