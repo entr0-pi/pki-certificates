@@ -1,8 +1,7 @@
-> [!WARNING]
-> This project is in active development and should not be used in production at this stage.
-> All `v1.*.*` releases should be considered beta.
-> Production-ready status is targeted from `v2` onward.
-> Database migration planning is not covered during the current phase, so schema changes may require manual database reinitialization or data reset.
+> [!INFO]
+> This project is production ready.
+> It is intended for production deployments with the hardening and operational guidance documented in this repository.
+> Review the deployment, security, backup, and environment configuration sections before rollout.
 
 # PKI Management System
 
@@ -42,21 +41,21 @@ You can run the application directly from the published container image without 
 For Docker deployment details, example Compose files, and container-specific setup, refer to [`/docker`](docker/README.md).
 
 ```bash
-mkdir my-pki
-cd my-pki
+mkdir pki
+cd pki
 # copy docker/docker-compose.yml from this repository and adapt it if needed
 nano docker-compose.yml
 
 # create .env from this repository's .env.example and edit it
 # or generate it from the project root with:
-# python utils/generate_env.py --env dev --output my-pki/.env
-# see utils/QUICKSTART.md for details
+# python utils/generate_env.py --env dev --output pki/.env
+# see utils/README.md for details
 
 nano .env
 docker compose up -d
 ```
 
-The default Compose image is `ghcr.io/entr0-pi/pki-certificates:latest`. See [docker/README.md](docker/README.md) for Docker deployment details and [utils/QUICKSTART.md](utils/QUICKSTART.md) for `.env` generation.
+The default Compose image is `ghcr.io/entr0-pi/pki-certificates:latest`. See [docker/README.md](docker/README.md) for Docker deployment details and [utils/README.md](utils/README.md) for `.env` generation.
 
 ## How-to for local dev
 
@@ -107,7 +106,7 @@ Commonly used settings:
 | `PKI_DB_AUTO_REINIT` | `false` | Rebuild invalid DB from schema and keep a `*.invalid.bak` backup |
 | `PKI_DATA_DIR` | `<repo>/data` | Must be an absolute path if set |
 | `PKI_DB_PATH` | `<repo>/database/pki.db` | Must be an absolute path if set |
-| `PKI_SESSION_MINUTES` | `15` | Session lifetime |
+| `PKI_SESSION_MINUTES` | `60` | Session lifetime |
 | `PKI_AUTH_COOKIE_NAME` | `pki_session` | Session cookie name |
 | `PKI_COOKIE_SECURE` | `true` | Runtime default in code; must stay `true` behind HTTPS |
 | `PKI_COOKIE_SAMESITE` | `lax` | Cookie SameSite policy |
@@ -134,7 +133,7 @@ PKI_JWT_SECRET=replace-with-a-long-random-jwt-secret
 PKI_SESSION_MINUTES=60
 
 PKI_AUTH_COOKIE_NAME=pki_session
-PKI_COOKIE_SECURE=true
+PKI_COOKIE_SECURE=false
 PKI_COOKIE_SAMESITE=lax
 PKI_COOKIE_DOMAIN=
 ```
@@ -145,6 +144,7 @@ Notes:
 - If you set either path, it must be absolute.
 - The application accepts your auth and cookie settings as provided; deployment hardening remains the operator's responsibility.
 - Use a strong `PKI_JWT_SECRET` and keep it at 32+ random characters even though the current code only requires it to be non-empty.
+- For local HTTP development, use `PKI_COOKIE_SECURE=false`; switch it to `true` for HTTPS deployments.
 - Do not tighten cookie or CSP settings in production without validating the affected login, form, download, and frontend flows in your environment.
 - Use `PKI_COOKIE_SECURE=true` in HTTPS deployments.
 
@@ -265,4 +265,4 @@ Install optional test dependencies from `tests/requirements-dev.txt` if your env
 - Back up both the database and encrypted certificate storage regularly using the **Backup and Restore** features in the Toolbox (admin only). You can download backups and restore them at any time without requiring a server restart. Alternatively, manually archive the `database/` and `data/` directories.
 - Review [docs/SECURITY.md](docs/SECURITY.md) before deploying outside local development.
 
-Last update: 2026 03 20 — Database hardening: SHA-256 fingerprint stored per certificate; audit log enriched with client IP address and user role; composite indexes added for common query patterns (org+status, status+expiry, issuer+status, CRL issuer); schema version bumped to v3
+Last update: 2026 03 21 — Schema relocated to `backend/schema/pki_schema.sql` (from `database/`); download filenames now prefixed with `Org-{org_id}_` for multi-org clarity; all path references updated across codebase and removed from git

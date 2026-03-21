@@ -348,8 +348,13 @@ Legend: `✓` allowed, `-` denied, `public` no auth required.
   "format": "pem"
 }
 ```
-- Allowed `format`: `pem`, `p12`, `chain`
+- Allowed `format`: `pem`, `p12`, `chain`, `full_chain`
 - Response JSON: none (file download)
+- Filename formats:
+  - PEM: `Org-{org_id}_{cert_name}.pem`
+  - PKCS#12: `Org-{org_id}_{cert_name}.p12`
+  - Chain: `Org-{org_id}_{cert_name}_chain.pem`
+  - Full chain (with root): `Org-{org_id}_{cert_name}_chain.pem`
 
 ### `GET /organizations/{org_id}/certificates/{cert_id}/p12-password`
 - Auth required: yes
@@ -365,6 +370,8 @@ Legend: `✓` allowed, `-` denied, `public` no auth required.
 - Auth required: yes
 - Request JSON: none
 - Response JSON: none (private key file download)
+- Filename format: `Org-{org_id}_{cert_name}.key.pem`
+- Restrictions: Server certificates only
 
 ### `GET /organizations/{org_id}/crl/{issuer_name}`
 - Auth required: no (public CRL endpoint for certificate validators)
@@ -378,6 +385,9 @@ Legend: `✓` allowed, `-` denied, `public` no auth required.
 ```
 - Allowed `format`: `pem` (default), `der`
 - Response JSON: none (CRL file download in requested format)
+- Filename formats:
+  - PEM: `Org-{org_id}_{issuer_name}_crl.pem`
+  - DER: `Org-{org_id}_{issuer_name}_crl.der`
 - Notes: Returns the CRL for a specific issuer in the requested format. Default is PEM; use `?format=der` for DER-encoded binary CRL. This endpoint is typically embedded in certificate CDP (CRL Distribution Point) extensions and accessed by certificate validators and OpenSSL's `crl_download` feature.
 
 ### `GET /organizations/{org_id}/crl/download`
@@ -391,6 +401,9 @@ Legend: `✓` allowed, `-` denied, `public` no auth required.
 ```
 - Allowed `format`: `pem` (default), `der`
 - Response JSON: none (CRL file download in requested format)
+- Filename formats:
+  - PEM: `Org-{org_id}_{issuer_name}_crl.pem`
+  - DER: `Org-{org_id}_{issuer_name}_crl.der`
 - Notes: Returns the preferred organization CRL (intermediate first, then root) in the requested format. Default is PEM; use `?format=der` for DER-encoded binary CRL. Useful for applications that need a single CRL endpoint without knowing the issuer name.
 
 ### `GET /organizations/{org_id}/crl/bundle`
@@ -404,6 +417,9 @@ Legend: `✓` allowed, `-` denied, `public` no auth required.
 ```
 - Allowed `format`: `pem` (default), `der`
 - Response JSON: none (CRL bundle in requested format)
+- Filename formats:
+  - PEM: `Org-{org_id}_{issuer_name}_crl-bundle.pem` (uses primary issuer name)
+  - DER: `Org-{org_id}_{issuer_name}_crl-bundle.der` (uses primary issuer name)
 - Notes: Returns a bundle containing all available organization CRLs (intermediates first, then roots) in the requested format.
   - **PEM format** (default): Multiple PEM blocks separated by newlines, suitable for `openssl verify -CRLfile` and most PKI clients.
   - **DER format** (`?format=der`): ASN.1 SEQUENCE of DER-encoded CRLs. Use this for structured binary bundling. OpenSSL's `crl` command expects a single CRL, not a SEQUENCE; use `asn1parse -in file.der -inform DER` to inspect the structure.
