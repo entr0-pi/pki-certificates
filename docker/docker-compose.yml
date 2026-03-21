@@ -41,6 +41,9 @@ services:
       
       # Persistent storage for SQLite database file via Docker volume (Bind mount not recommended for SQLite due to potential file locking issues)
       - pki_database:/app/database
+      # ... OR via bind mount
+      # Uncomment to use, chmod -R 777 ./database to allow container access)
+      #- ./database:/app/database
 
     healthcheck:
       test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/healthz').read()"]
@@ -56,6 +59,5 @@ volumes:
 # Comment out the following volume definitions depending on whether you want to use Docker volumes or bind mounts for persistent storage (see volumes: section in the pki service above)
   pki_data:
     driver: local
-# Using a Docker volume for the SQLite database is recommended to avoid file locking issues that can arise with bind mounts. If you prefer to use a bind mount for the database, ensure that the host directory has appropriate permissions and is not accessed by multiple processes simultaneously.  
   pki_database:
     driver: local
