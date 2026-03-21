@@ -2080,7 +2080,7 @@ async def download_crl(
             content=crl_content,
             media_type="application/pkix-crl",
             headers={
-                "Content-Disposition": f'attachment; filename="{issuer_name}.crl.der"'
+                "Content-Disposition": f'attachment; filename="Org-{org_id}_{issuer_name}_crl.der"'
             },
         )
 
@@ -2088,7 +2088,7 @@ async def download_crl(
         content=crl_content,
         media_type="application/pkix-crl",
         headers={
-            "Content-Disposition": f'attachment; filename="{issuer_name}.crl.pem"'
+            "Content-Disposition": f'attachment; filename="Org-{org_id}_{issuer_name}_crl.pem"'
         },
     )
 
@@ -2325,7 +2325,7 @@ async def download_org_crl(org_id: int):
         content=crl_content,
         media_type="application/pkix-crl",
         headers={
-            "Content-Disposition": f'attachment; filename="{issuer_name}.crl.pem"'
+            "Content-Disposition": f'attachment; filename="Org-{org_id}_{issuer_name}_crl.pem"'
         },
     )
 
@@ -2343,6 +2343,8 @@ async def download_org_crl_bundle(
     org = db.get_organization_by_id(org_id)
     if not org:
         return Response(content="Organization not found", status_code=404)
+
+    bundle_issuer = _select_preferred_crl_issuer(org_id) or "bundle"
 
     certs = db.list_certificates_by_organization(org_id)
     # Get all CAs (intermediate and root) that have CRLs, regardless of status
@@ -2381,14 +2383,14 @@ async def download_org_crl_bundle(
         return Response(
             content=bundle_der,
             media_type="application/pkix-crl",
-            headers={"Content-Disposition": 'attachment; filename="crl-bundle.der"'},
+            headers={"Content-Disposition": f'attachment; filename="Org-{org_id}_{bundle_issuer}_crl-bundle.der"'},
         )
 
     bundle = b"\n\n".join(crl_pems) + b"\n"
     return Response(
         content=bundle,
         media_type="application/x-pem-file",
-        headers={"Content-Disposition": 'attachment; filename="crl-bundle.pem"'},
+        headers={"Content-Disposition": f'attachment; filename="Org-{org_id}_{bundle_issuer}_crl-bundle.pem"'},
     )
 
 
@@ -2429,7 +2431,7 @@ async def download_certificate(
             content=pem_content,
             media_type="application/x-pem-file",
             headers={
-                "Content-Disposition": f'attachment; filename="{cert["cert_name"]}.pem"'
+                "Content-Disposition": f'attachment; filename="Org-{org_id}_{cert["cert_name"]}.pem"'
             },
         )
 
@@ -2457,7 +2459,7 @@ async def download_certificate(
             content=p12_content,
             media_type="application/x-pkcs12",
             headers={
-                "Content-Disposition": f'attachment; filename="{cert["cert_name"]}.p12"'
+                "Content-Disposition": f'attachment; filename="Org-{org_id}_{cert["cert_name"]}.p12"'
             },
         )
 
@@ -2477,7 +2479,7 @@ async def download_certificate(
             content=chain_content,
             media_type="application/x-pem-file",
             headers={
-                "Content-Disposition": f'attachment; filename="chain_{cert_id}.pem"'
+                "Content-Disposition": f'attachment; filename="Org-{org_id}_{cert["cert_name"]}_chain.pem"'
             },
         )
 
@@ -2501,7 +2503,7 @@ async def download_certificate(
             content=chain_content,
             media_type="application/x-pem-file",
             headers={
-                "Content-Disposition": f'attachment; filename="chain_{cert_id}.pem"'
+                "Content-Disposition": f'attachment; filename="Org-{org_id}_{cert["cert_name"]}_chain.pem"'
             },
         )
 
@@ -2607,7 +2609,7 @@ async def download_unencrypted_server_private_key(org_id: int, cert_id: int):
         content=plain_pem,
         media_type="application/x-pem-file",
         headers={
-            "Content-Disposition": f'attachment; filename="{cert["cert_name"]}.key.pem"'
+            "Content-Disposition": f'attachment; filename="Org-{org_id}_{cert["cert_name"]}.key.pem"'
         },
     )
 
