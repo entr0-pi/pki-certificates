@@ -4,6 +4,7 @@ services:
     image: ghcr.io/entr0-pi/pki-certificates:latest
     container_name: pki
     ports:
+    # Change to other port if 8000 is already in use on the host machine, eg. "8080:8000"
       - "8000:8000"
     environment:
       # ===== Docker-specific values =====
@@ -13,6 +14,7 @@ services:
       PKI_PORT: 8000
 
       # Storage paths managed by Docker volumes (see volumes: section below)
+      # Not recommended to change
       PKI_DATA_DIR: /app/data
       PKI_DB_PATH: /app/database/pki.db
 
@@ -30,9 +32,14 @@ services:
       - .env
 
     volumes:
-      # Persistent storage for encrypted certificate artifacts
+      # Persistent storage for encrypted certificate artifacts via Docker volume (optional, comment out if using bind mount)
       - pki_data:/app/data
-      # Persistent storage for SQLite database file
+      # ... OR via bind mount
+      # Usefull when you want to easily rotate the encryption key using utils/encryption_manager.py
+      # Uncomment to use, chmod -R 777 ./data to allow container access)
+      #- ./data:/app/data
+      
+      # Persistent storage for SQLite database file via Docker volume (Bind mount not recommended for SQLite due to potential file locking issues)
       - pki_database:/app/database
 
     healthcheck:
@@ -46,7 +53,9 @@ services:
 
 
 volumes:
+# Comment out the following volume definitions depending on whether you want to use Docker volumes or bind mounts for persistent storage (see volumes: section in the pki service above)
   pki_data:
     driver: local
+# Using a Docker volume for the SQLite database is recommended to avoid file locking issues that can arise with bind mounts. If you prefer to use a bind mount for the database, ensure that the host directory has appropriate permissions and is not accessed by multiple processes simultaneously.  
   pki_database:
     driver: local

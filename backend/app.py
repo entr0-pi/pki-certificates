@@ -157,6 +157,15 @@ async def lifespan(app: FastAPI):
         logger.info(
             "Configured session duration: %s minutes", auth_settings.session_minutes
         )
+
+        # Verify storage paths are writable before initializing
+        logger.info("Verifying storage paths are writable...")
+        is_writable, error_msg = _verify_restore_paths_writable(resolved_db_path, resolved_data_dir)
+        if not is_writable:
+            logger.error(f"Storage path verification failed: {error_msg}")
+            raise RuntimeError(f"Cannot proceed with startup: {error_msg}")
+        logger.info("Storage path verification passed")
+
         if is_under_temp_dir(resolved_data_dir):
             logger.warning(
                 "PKI_DATA_DIR points to a temp location (%s). This is not recommended for persistent PKI data.",
@@ -1252,6 +1261,40 @@ async def download_full_backup(request: Request):
     )
 
 
+def _verify_restore_paths_writable(db_path: Path, data_dir: Path) -> tuple[bool, str]:
+    """
+    Test if both database and data directory paths are writable.
+    Returns (is_writable, error_message).
+    """
+    # Test database directory writability
+    db_parent = db_path.parent
+    if not db_parent.exists():
+        return False, f"Database directory does not exist: {db_parent}"
+
+    test_db_file = db_parent / ".pki_restore_test"
+    try:
+        test_db_file.write_bytes(b"test")
+        test_db_file.unlink()
+    except (OSError, PermissionError) as e:
+        return False, f"Database directory is not writable: {db_parent} ({e})"
+
+    # Test data directory writability
+    if not data_dir.exists():
+        try:
+            data_dir.mkdir(parents=True, exist_ok=True)
+        except (OSError, PermissionError) as e:
+            return False, f"Cannot create data directory: {data_dir} ({e})"
+
+    test_data_file = data_dir / ".pki_restore_test"
+    try:
+        test_data_file.write_bytes(b"test")
+        test_data_file.unlink()
+    except (OSError, PermissionError) as e:
+        return False, f"Data directory is not writable: {data_dir} ({e})"
+
+    return True, ""
+
+
 @app.post("/admin/restore/database", dependencies=[require_roles_config()])
 async def restore_full_backup(request: Request, backup_file: UploadFile = File(...)):
     """
@@ -1266,6 +1309,15 @@ async def restore_full_backup(request: Request, backup_file: UploadFile = File(.
     try:
         db_path = get_db_path()
         data_dir = get_data_dir()
+
+        # Pre-flight check: Verify both paths are writable before proceeding
+        is_writable, error_msg = _verify_restore_paths_writable(db_path, data_dir)
+        if not is_writable:
+            logger.error(f"Restore pre-flight check failed: {error_msg}")
+            return RedirectResponse(
+                f"/toolbox?restore=error&detail={error_msg.replace(' ', '+').replace('(', '%28').replace(')', '%29').replace(':', '%3A')}",
+                status_code=303,
+            )
 
         # Phase 1: Receive upload
         upload_tmp = tempfile.NamedTemporaryFile(suffix=".zip", delete=False)
