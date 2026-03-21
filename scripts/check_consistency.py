@@ -29,9 +29,11 @@ import json
 from pathlib import Path
 from datetime import datetime, timezone
 from sqlalchemy import text
+from dotenv import load_dotenv
 
 # Add backend to path
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
+load_dotenv(PROJECT_ROOT / ".env", override=True)
 sys.path.insert(0, str(PROJECT_ROOT / "backend"))
 
 import db
