@@ -35,6 +35,7 @@ push_ghcr_image.bat
 
 # Local runtime/test data
 data/
+database/
 /org*
 /test_org*
 *.db

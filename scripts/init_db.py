@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Initialize database/pki.db from database/pki_schema.sql.
+Initialize database/pki.db from backend/schema/pki_schema.sql.
 Optionally recreates an invalid database.
 """
 

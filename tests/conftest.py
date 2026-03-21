@@ -49,7 +49,7 @@ def tmp_db(tmp_path_factory) -> Path:
 
     The database is placed in a pytest-managed temp directory.
     """
-    schema_path = PROJECT_ROOT / "database" / "pki_schema.sql"
+    schema_path = PROJECT_ROOT / "backend" / "schema" / "pki_schema.sql"
     tmp_dir = tmp_path_factory.mktemp("test_db")
     db_path = tmp_dir / "pki_test.db"
 
@@ -92,7 +92,7 @@ def patch_db_for_session(tmp_db):
     try:
         # Patch DB paths
         db_module.DB_PATH = tmp_db
-        db_module.SCHEMA_PATH = PROJECT_ROOT / "database" / "pki_schema.sql"
+        db_module.SCHEMA_PATH = PROJECT_ROOT / "backend" / "schema" / "pki_schema.sql"
 
         # Dispose the production engine
         if hasattr(db_module, "engine") and db_module.engine is not None:

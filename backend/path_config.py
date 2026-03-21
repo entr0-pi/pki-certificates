@@ -34,7 +34,7 @@ def get_db_path() -> Path:
 
 
 def get_schema_path() -> Path:
-    return get_project_root() / "database" / "pki_schema.sql"
+    return get_project_root() / "backend" / "schema" / "pki_schema.sql"
 
 
 def is_under_temp_dir(path: Path) -> bool:

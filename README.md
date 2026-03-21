@@ -213,7 +213,7 @@ frontend/
     vendor/bundle.css              Built CSS served by FastAPI
     *.js                           Small UI behaviors
 
-database/
+backend/schema/
   pki_schema.sql                   SQLite schema (v3: fingerprint_sha256, audit IP/role, composite indexes)
 
 docs/

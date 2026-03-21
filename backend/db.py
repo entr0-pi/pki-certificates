@@ -62,7 +62,7 @@ def _validate_schema_version(conn) -> None:
     if not result.fetchone():
         raise RuntimeError(
             "schema_version table is missing. Re-initialize the database from "
-            "database/pki_schema.sql to continue."
+            "backend/schema/pki_schema.sql to continue."
         )
     row = conn.execute(
         text("SELECT version FROM schema_version ORDER BY applied_at DESC LIMIT 1")
@@ -234,7 +234,7 @@ def init_database(auto_recreate_invalid: bool = False):
         else:
             raise RuntimeError(
                 "Database exists but is missing required tables. "
-                "Set PKI_DB_AUTO_REINIT=true to recreate from database/pki_schema.sql."
+                "Set PKI_DB_AUTO_REINIT=true to recreate from backend/schema/pki_schema.sql."
             )
 
     # Validate schema version

@@ -3,7 +3,7 @@
 This document describes the PKI database model as of the current codebase.
 
 Source of truth:
-- Schema DDL: `database/pki_schema.sql`
+- Schema DDL: `backend/schema/pki_schema.sql`
 - Runtime usage: `backend/db.py`, `backend/app.py`
 
 ---
@@ -139,4 +139,4 @@ SELECT (SELECT COUNT(*) FROM organizations) AS organizations,
 
 - If you add writes to new tables, update this document in the same PR.
 - If you switch app logic to read from views, update the relevant section here.
-- Keep this doc aligned with both `database/pki_schema.sql` and runtime behavior in `backend/db.py` / `backend/app.py`.
+- Keep this doc aligned with both `backend/schema/pki_schema.sql` and runtime behavior in `backend/db.py` / `backend/app.py`.
