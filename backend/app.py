@@ -1620,6 +1620,13 @@ async def restore_full_backup(request: Request, backup_file: UploadFile = File(.
                 "/toolbox?restore=error&detail=Database+swap+failed", status_code=303
             )
 
+        # Phase 5b: Dispose engine after successful DB swap to clear connection pool
+        # This ensures subsequent requests use the new database, not cached connections
+        try:
+            db.engine.dispose()
+        except Exception as e:
+            logger.warning(f"Failed to dispose engine after DB swap: {e}")
+
         # Phase 6: Atomic data/ swap (handles mounted volumes)
         data_old = data_dir.parent / "data_restore_old"
         try:
