@@ -179,11 +179,14 @@ async def lifespan(app: FastAPI):
         )
         db.init_database(auto_recreate_invalid=auto_reinit)
         _validate_rbac_config()
+        _validate_public_routes_configured()
+        _validate_private_routes_configured()
         logger.info("RBAC configuration loaded and validated")
 
         # Cache config files at startup to avoid re-reading on every request (issue #17)
         # Note: role_defaults (root, intermediate, end-entity) are loaded per-request as needed
         app.state.rbac_config = _load_rbac_config()
+        app.state.public_paths = _load_public_paths()
         app.state.ui_policy = _load_ui_policy()
         logger.info("Configuration caching initialized")
 
@@ -270,12 +273,12 @@ async def http_exception_handler(request: Request, exc):
     raise exc
 
 
-AUTH_EXEMPT_PATHS = {"/auth/login", "/auth/session", "/auth/logout", "/healthz"}
-
-
-def _is_crl_route(path: str) -> bool:
-    """Check if path is a public CRL endpoint (no authentication required)."""
-    return "/crl/" in path
+def _is_public_path(path: str, method: str, public_paths: list) -> bool:
+    """Check if a request path+method matches any public route pattern from rbac.json."""
+    for route_method, pattern in public_paths:
+        if route_method == method.upper() and pattern.match(path):
+            return True
+    return False
 
 
 def _requires_non_html_unauthorized(path: str) -> bool:
@@ -291,7 +294,8 @@ def _requires_non_html_unauthorized(path: str) -> bool:
 @app.middleware("http")
 async def auth_session_middleware(request: Request, call_next):
     path = request.url.path
-    if path.startswith("/static/") or path in AUTH_EXEMPT_PATHS or _is_crl_route(path):
+    public_paths = getattr(request.app.state, "public_paths", [])
+    if _is_public_path(path, request.method, public_paths):
         return await call_next(request)
 
     settings: AuthSettings = request.app.state.auth_settings
@@ -329,11 +333,9 @@ async def csrf_protection_middleware(request: Request, call_next):
     is an additional defense for AJAX requests.
     """
     if request.method in {"POST", "PUT", "DELETE", "PATCH"}:
-        # Static files and auth endpoints are exempt
-        if (
-            request.url.path.startswith("/static/")
-            or request.url.path in AUTH_EXEMPT_PATHS
-        ):
+        # Public endpoints are exempt from CSRF check
+        public_paths = getattr(request.app.state, "public_paths", [])
+        if _is_public_path(request.url.path, request.method, public_paths):
             return await call_next(request)
 
         # CSRF check: either have X-Requested-With header OR valid session cookie
@@ -838,6 +840,43 @@ def _get_default_days_for_cert_type(cert_type: str) -> int:
 
 _KNOWN_ROLES = frozenset({"admin", "manager", "user"})
 _KNOWN_METHODS = frozenset({"GET", "POST", "PUT", "PATCH", "DELETE", "HEAD", "OPTIONS"})
+_EXPECTED_PUBLIC_ROUTES = frozenset({
+    ("GET", "/auth/login"),
+    ("POST", "/auth/session"),
+    ("POST", "/auth/logout"),
+    ("GET", "/healthz"),
+    ("GET", "/organizations/{org_id}/crl/{issuer_name}"),
+    ("GET", "/organizations/{org_id}/crl/download"),
+    ("GET", "/organizations/{org_id}/crl/bundle"),
+    ("GET", "/static/*"),
+    ("HEAD", "/static/*"),
+})
+
+_EXPECTED_PRIVATE_ROUTES = frozenset({
+    ("GET", "/"),
+    ("GET", "/toolbox"),
+    ("POST", "/create-organization"),
+    ("GET", "/health"),
+    ("GET", "/admin/backup/database"),
+    ("POST", "/admin/restore/database"),
+    ("GET", "/organizations"),
+    ("GET", "/organizations/{org_id}/manage"),
+    ("GET", "/organizations/{org_id}/create-certificate"),
+    ("GET", "/organizations/{org_id}/root-ca"),
+    ("POST", "/organizations/{org_id}/root-ca"),
+    ("GET", "/organizations/{org_id}/intermediate-ca"),
+    ("POST", "/organizations/{org_id}/intermediate-ca"),
+    ("GET", "/organizations/{org_id}/end-entity"),
+    ("POST", "/organizations/{org_id}/end-entity"),
+    ("GET", "/organizations/{org_id}/certificates/{cert_id}/popup"),
+    ("GET", "/organizations/{org_id}/certificates/{cert_id}/renew"),
+    ("GET", "/organizations/{org_id}/certificates/{cert_id}/download"),
+    ("GET", "/organizations/{org_id}/certificates/{cert_id}/p12-password"),
+    ("POST", "/organizations/{org_id}/certificates/{cert_id}/revoke"),
+    ("GET", "/organizations/{org_id}/certificates/{cert_id}/private-key/plain"),
+    ("GET", "/api/organizations/{org_id}/crls"),
+    ("GET", "/api/check-consistency"),
+})
 
 
 def _load_rbac_config() -> dict[str, list[str]]:
@@ -845,23 +884,53 @@ def _load_rbac_config() -> dict[str, list[str]]:
 
     Returns a dict mapping 'METHOD /path/template' to a list of allowed roles.
     An absent key means the route is accessible to any authenticated user.
+    Public routes (with ["public"] sentinel) are excluded from this dict.
     Follows the same json.loads(path.read_text()) pattern as _load_role_policy().
     """
     rbac_path = PROJECT_ROOT / "backend" / "config" / "rbac.json"
     raw = json.loads(rbac_path.read_text(encoding="utf-8"))
-    return {k: v for k, v in raw.items() if not k.startswith("_")}
+    return {k: v for k, v in raw.items() if not k.startswith("_") and v != ["public"]}
+
+
+def _template_to_regex(path_template: str) -> re.Pattern:
+    """Convert FastAPI path template to compiled regex. {param} -> [^/]+"""
+    if path_template.endswith("/*"):
+        prefix = "/".join(re.escape(s) for s in path_template[:-2].split("/"))
+        return re.compile(f"^{prefix}(/.*)?$")
+    parts = []
+    for seg in path_template.split("/"):
+        parts.append("[^/]+" if (seg.startswith("{") and seg.endswith("}")) else re.escape(seg))
+    return re.compile("^" + "/".join(parts) + "$")
+
+
+def _load_public_paths() -> list[tuple[str, re.Pattern]]:
+    """Load public (no-auth) route patterns from rbac.json as (METHOD, compiled_regex) pairs."""
+    rbac_path = PROJECT_ROOT / "backend" / "config" / "rbac.json"
+    raw = json.loads(rbac_path.read_text(encoding="utf-8"))
+    result = []
+    for key, roles in raw.items():
+        if key.startswith("_") or roles != ["public"]:
+            continue
+        method, path_template = key.split(" ", 1)
+        result.append((method.upper(), _template_to_regex(path_template)))
+    return result
 
 
 def _validate_rbac_config() -> None:
-    """Validate rbac.json at startup. Raises ValueError on any misconfiguration."""
+    """Validate rbac.json at startup. Raises ValueError on any misconfiguration.
+
+    Loads raw JSON directly so public entries are visible. Accepts ["public"] sentinel
+    and skips role-name validation for those entries.
+    """
     rbac_path = PROJECT_ROOT / "backend" / "config" / "rbac.json"
     if not rbac_path.exists():
         raise ValueError(f"rbac.json not found at {rbac_path}")
     try:
-        rbac = _load_rbac_config()
+        raw = json.loads(rbac_path.read_text(encoding="utf-8"))
     except json.JSONDecodeError as exc:
         raise ValueError(f"rbac.json is not valid JSON: {exc}") from exc
 
+    rbac = {k: v for k, v in raw.items() if not k.startswith("_")}
     for key, roles in rbac.items():
         parts = key.split(" ", 1)
         if len(parts) != 2:
@@ -877,11 +946,38 @@ def _validate_rbac_config() -> None:
             raise ValueError(f"rbac.json: path must start with '/' in key {key!r}.")
         if not isinstance(roles, list) or not roles:
             raise ValueError(f"rbac.json: roles for {key!r} must be a non-empty list.")
+        if roles == ["public"]:
+            continue  # sentinel — no role-name validation needed
         for role in roles:
             if role not in _KNOWN_ROLES:
                 raise ValueError(
                     f"rbac.json: unknown role {role!r} in key {key!r}. Known: {sorted(_KNOWN_ROLES)}."
                 )
+
+
+def _validate_public_routes_configured() -> None:
+    """Ensure all expected public routes are marked ["public"] in rbac.json."""
+    rbac_path = PROJECT_ROOT / "backend" / "config" / "rbac.json"
+    raw = json.loads(rbac_path.read_text(encoding="utf-8"))
+    configured_public = {tuple(k.split(" ", 1)) for k, v in raw.items() if v == ["public"]}
+    missing = _EXPECTED_PUBLIC_ROUTES - configured_public
+    if missing:
+        routes_str = ", ".join(f"{m[0]} {m[1]}" for m in sorted(missing))
+        raise ValueError(f"Public routes missing from rbac.json: {routes_str}")
+
+
+def _validate_private_routes_configured() -> None:
+    """Ensure all expected private routes are in rbac.json and NOT marked ["public"]."""
+    rbac_path = PROJECT_ROOT / "backend" / "config" / "rbac.json"
+    raw = json.loads(rbac_path.read_text(encoding="utf-8"))
+    configured_routes = {tuple(k.split(" ", 1)): v for k, v in raw.items() if not k.startswith("_")}
+
+    # Check that all expected private routes exist and are not public
+    for route in _EXPECTED_PRIVATE_ROUTES:
+        if route not in configured_routes:
+            raise ValueError(f"Private route {route[0]} {route[1]} missing from rbac.json")
+        if configured_routes[route] == ["public"]:
+            raise ValueError(f"Private route {route[0]} {route[1]} must not be marked as [\"public\"]")
 
 
 def _apply_match_policy_fields(
@@ -958,7 +1054,7 @@ def _run_create_cert_subprocess(params: dict) -> str:
             temp_path.unlink(missing_ok=True)
 
 
-@app.get("/", response_class=HTMLResponse)
+@app.get("/", response_class=HTMLResponse, dependencies=[require_roles_config()])
 async def landing_page(request: Request):
     """
     Landing page showing existing organizations and option to create new ones.

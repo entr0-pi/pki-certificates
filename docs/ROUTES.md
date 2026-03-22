@@ -42,23 +42,64 @@ Operator note:
 
 ## Access Control Configuration (`backend/config/rbac.json`)
 
-Route permissions are configuration-driven through `backend/config/rbac.json`.
+Route permissions are **fully configuration-driven** through `backend/config/rbac.json`. This is the **single source of truth** for all application routes—public and protected. No Python code changes are needed to adjust access policies.
 
-- Routes listed in `rbac.json` are restricted to the listed roles.
-- Routes not listed are allowed to any authenticated role (default-allow).
-- Public routes are those that do not use `require_roles_config()` and do not otherwise require a valid session.
-- Invalid RBAC config fails application startup.
-- Permission changes require editing `rbac.json` and restarting the server.
+### Configuration Format
 
-Example:
+Each route is defined as `"METHOD /path/template": [roles]`:
+
+- **Public routes** use the `["public"]` sentinel: `"GET /auth/login": ["public"]`
+- **Protected routes** list allowed roles: `"GET /toolbox": ["admin"]`
+- **Routes with no explicit role list** allow any authenticated user (access granted after session validation)
+- **Path templates** support FastAPI syntax: `{param}` → parameter matching, `/*` → prefix matching
+
+### Route Access Rules
+
+1. **Unauthenticated requests** to public routes → allowed
+2. **Unauthenticated requests** to protected routes → redirect to `/auth/login` (HTML) or 401 (API)
+3. **Authenticated requests** without role restriction → allowed
+4. **Authenticated requests** with role restriction → check user's role against allowed list; deny with 403 if insufficient
+
+### Example Configuration
 
 ```json
 {
+  "_comment": "Per-route role access control...",
+  "GET /": ["admin", "manager", "user"],
+  "GET /auth/login": ["public"],
+  "POST /auth/session": ["public"],
+  "GET /static/*": ["public"],
   "GET /toolbox": ["admin"],
   "POST /create-organization": ["admin"],
-  "GET /health": ["admin", "manager"]
+  "GET /health": ["admin", "manager"],
+  "GET /organizations": ["admin", "manager", "user"]
 }
 ```
+
+### Modifying Route Access
+
+To change route permissions **without touching Python code**:
+
+1. Edit `backend/config/rbac.json`
+2. Restart the server (configuration is validated and cached at startup)
+3. Invalid RBAC config will fail startup with a detailed error message
+
+This approach ensures operators can adjust fine-grained role-based access control without requiring code reviews or deployments.
+
+### Startup Validation
+
+The application validates `rbac.json` at startup:
+
+1. **Format validation** — each entry is `"METHOD /path"` with non-empty roles list
+2. **Role validation** — all roles are in the known set (`admin`, `manager`, `user`, or `public`)
+3. **Public route coverage** — all expected public routes (login, health, CRL, static) are marked `["public"]`
+4. **Private route coverage** — all expected protected routes are in the config and NOT marked `["public"]`
+
+If any validation fails, startup aborts with a clear error message. Examples:
+
+- Missing public route: `Public routes missing from rbac.json: GET /healthz`
+- Missing private route: `Private route GET /toolbox missing from rbac.json`
+- Misconfigured route: `Private route GET /toolbox must not be marked as ["public"]`
 
 ## Auth and Error Behavior
 
@@ -73,7 +114,7 @@ Example:
 
 ## Role Matrix by Route Group
 
-> **⚠️ Source of Truth**: The tables below reflect the current `backend/config/rbac.json` configuration. For authoritative role-based access control rules, always refer to `backend/config/rbac.json` directly. These tables may become outdated if `rbac.json` is modified without regenerating this documentation.
+> **📋 Source of Truth**: The tables below are generated from `backend/config/rbac.json`. For authoritative role-based access control rules, **always refer directly to `backend/config/rbac.json`**. These tables are for reference only—the canonical access rules are in the configuration file.
 
 Legend: `✓` allowed, `-` denied, `public` no auth required.
 

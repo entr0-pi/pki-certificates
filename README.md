@@ -202,7 +202,7 @@ backend/
   uvicorn_log_config.py            Reference documentation for Uvicorn logging config structure
   config/
     policy.json                    Certificate policy, defaults, and root password length requirements
-    rbac.json                      Route-to-role authorization map
+    rbac.json                      Route-to-role authorization map (single source of truth for all routes)
   openssl/
     config.txt                     OpenSSL config assets (for reference only, not used)
 
@@ -238,6 +238,31 @@ tailwind.config.js                 Tailwind/DaisyUI configuration
 requirements.txt                   Python runtime dependencies
 ```
 
+## Route Access Control
+
+All HTTP route permissions are **centrally configured** in `backend/config/rbac.json` without requiring Python code changes:
+
+```json
+{
+  "GET /auth/login": ["public"],           // Public endpoint (no auth required)
+  "GET /toolbox": ["admin"],               // Admin only
+  "GET /organizations": ["admin", "manager", "user"],  // Multiple roles allowed
+  "GET /static/*": ["public"]              // Prefix pattern (wildcard)
+}
+```
+
+**Key Features:**
+- Use `["public"]` sentinel for unauthenticated routes
+- List allowed roles to restrict access: `["admin"]`, `["admin", "manager"]`, etc.
+- Routes without explicit role list allow any authenticated user
+- Supports path parameters: `/organizations/{org_id}/...`
+- Supports prefix patterns: `/static/*`, `/api/*`
+- Comprehensive validation at startup ensures all routes are configured
+- Invalid config fails application launch with clear error messages
+- No Python code changes needed to adjust permissions
+
+For details, see [docs/ROUTES.md - Access Control Configuration](docs/ROUTES.md#access-control-configuration-backendbconfigrbacjson).
+
 ## Technical Documentation
 
 | Document | Purpose |
@@ -265,4 +290,4 @@ Install optional test dependencies from `tests/requirements-dev.txt` if your env
 - Back up both the database and encrypted certificate storage regularly using the **Backup and Restore** features in the Toolbox (admin only). You can download backups and restore them at any time without requiring a server restart. Alternatively, manually archive the `database/` and `data/` directories.
 - Review [docs/SECURITY.md](docs/SECURITY.md) before deploying outside local development.
 
-Last update: 2026 03 21 — Schema relocated to `backend/schema/pki_schema.sql` (from `database/`); download filenames now prefixed with `Org-{org_id}_` for multi-org clarity; all path references updated across codebase and removed from git
+Last update: 2026-03-22 — All routes centralized in `rbac.json` with startup validation for public and private routes; `["public"]` sentinel for unauthenticated endpoints; middleware configuration-driven with zero hardcoded exemptions; operators adjust access via config without code changes

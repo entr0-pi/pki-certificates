@@ -78,14 +78,18 @@ Important deployment note:
 
 The FastAPI app applies middleware-based protections to all requests.
 
-Authentication/session middleware:
+**Authentication/session middleware:**
 
-- validates signed JWT session cookies
-- loads session role for protected endpoints
+- validates public route exemptions from `rbac.json` (marked with `["public"]` sentinel)
+- validates signed JWT session cookies for protected routes
+- loads session role and enforces RBAC checks for protected endpoints
 
-CSRF protection:
+**CSRF protection:**
 
-- state-changing requests rely on cookie policy plus `X-Requested-With` checks
+- state-changing requests (POST, PUT, DELETE, PATCH) require either:
+  - A valid session cookie (SameSite=Lax primary defense), OR
+  - `X-Requested-With: xmlhttprequest` header (for AJAX requests)
+- public endpoints (marked with `["public"]`) are exempt from CSRF checks
 - intended to reduce forged browser-origin requests
 
 Security headers:
@@ -100,19 +104,43 @@ These controls reduce exposure to clickjacking, MIME sniffing, weak cross-origin
 
 ### 5. Role-Based Access Control
 
-Authorization is enforced per route using roles from the JWT.
+Authorization is enforced per route using roles from the JWT. All route access policies are **configuration-driven** via `backend/config/rbac.json` without requiring code changes.
 
+**Supported roles:**
 - `admin`: full management operations
 - `manager`: limited certificate-management operations
 - `user`: read-only access
 
-Examples of protected behavior:
+**Configuration example** (`backend/config/rbac.json`):
+```json
+{
+  "GET /toolbox": ["admin"],
+  "POST /create-organization": ["admin"],
+  "GET /organizations": ["admin", "manager", "user"],
+  "GET /auth/login": ["public"]
+}
+```
 
+**Access rules:**
+- Public routes (sentinel: `["public"]`) require no authentication
+- Protected routes with explicit role list enforce role checks
+- Routes without explicit role list allow any authenticated user
+
+**Examples of protected behavior:**
 - organization creation is admin-only
-- revocation is restricted
+- revocation is restricted to admin
 - lower roles cannot use privileged management routes
+- unauthenticated requests to protected routes redirect to login
 
-RBAC is backed by route-role configuration and is one of the main protections against accidental or malicious privilege escalation.
+**Configuration validation at startup:**
+- Format validation: all routes are `"METHOD /path"` with valid roles
+- Role validation: all roles are `admin`, `manager`, `user`, or `public` sentinel
+- Public route coverage: all expected public routes (login, health, CRL, static files) are configured
+- Private route coverage: all expected protected routes are configured and not accidentally marked public
+- Permission changes require editing `rbac.json` and restarting (no Python code deployments)
+- Comprehensive error messages identify exactly which routes are misconfigured
+
+RBAC is one of the main protections against accidental or malicious privilege escalation.
 
 ### 6. Input Validation And Safe Data Access
 
