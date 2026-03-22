@@ -223,8 +223,10 @@ Operators are responsible for:
   1. Validates ZIP integrity and structure (rejects path traversal attempts, unexpected content)
   2. Verifies SQLite database integrity (`PRAGMA integrity_check`)
   3. Confirms schema version compatibility (must match current application version)
-  4. Performs atomic swap of database and data directory (maintains consistency)
-  5. Preserves recovery backups during the operation
+  4. **Rewrites paths if restoring from a different data directory** (e.g., Windows → Linux, or different environment)
+  5. Performs atomic swap of database and data directory (maintains consistency)
+  6. Preserves recovery backups during the operation
+- Cross-platform restore supported: backups can be restored to a different operating system or directory layout (e.g., Windows backup → Linux deployment) as long as encryption keys match
 - Can be safely run while the application is live (no manual restart required)
 - Upload limits: 5 GB max file size, 10 GB max uncompressed size
 - Error recovery:
@@ -237,8 +239,8 @@ Operators are responsible for:
 - Backup files contain encrypted certificate material (`*.pem.enc`, `*.p12.enc`) with AES-256-GCM encryption
 - Full backups should be stored in a secure location with restricted filesystem access
 - If storing backups off-site or in cloud storage, ensure encryption in transit and at rest
-- The encryption key (`PKI_ENCRYPTION_KEY`) and salt (`PKI_ENCRYPTION_SALT`) must be available to restore from backup
-- Test restore procedures regularly to ensure backup integrity
+- **Critical requirement:** The encryption key (`PKI_ENCRYPTION_KEY`) and salt (`PKI_ENCRYPTION_SALT`) must be identical between backup and restore environments; without matching keys, certificate material cannot be decrypted during restore
+- Test restore procedures regularly to ensure backup integrity, especially for cross-platform or cross-environment restores
 - Backup operations are audit-logged with the requesting user's identity
 
 **Manual Backup Alternative**:

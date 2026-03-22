@@ -22,7 +22,7 @@ This application provides a complete, self-hosted certificate authority (CA) man
 - **Certificate Revocation Lists** — Automatic CRL generation and distribution when certificates are revoked; public endpoints for external validators.
 - **Encrypted Storage** — Certificate private keys and sensitive data encrypted at rest; decryption only on demand.
 - **Audit Logging** — Track all certificate operations (creation, renewal, revocation, downloads) with user attribution, role, client IP address, and timestamps. The Recent Operations panel on the dashboard displays IP alongside each event.
-- **Backup & Restore** — Export and restore full backups (database + certificate storage) from the Toolbox without server restart; atomic swaps ensure consistency.
+- **Backup & Restore** — Export and restore full backups (database + certificate storage) from the Toolbox without server restart; atomic swaps ensure consistency; cross-platform restore supported (e.g., Windows → Linux) with matching encryption keys.
 - **Policy-Driven Defaults** — Enforce certificate constraints (validity periods, key algorithms, SAN validation, and root password minimum length) via centralized policy configuration.
 
 ### Use Cases
