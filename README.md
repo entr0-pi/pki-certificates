@@ -97,6 +97,8 @@ Review and adjust key settings as needed:
 - `PKI_COOKIE_SECURE` — set to `false` for local HTTP development, `true` for HTTPS
 
 For a full list of all environment variables and options (including `--env production`, `--output`, `--dry-run`), see [utils/README.md](utils/README.md).
+Encryption keys can be rotated later without losing access to existing encrypted artifacts by using `python utils/encryption_manager.py prepare` and `python utils/encryption_manager.py rotate`.
+See [utils/README.md](utils/README.md) for the full key rotation workflow and cautions before promoting the new `.env`.
 
 ### 3. Initialize the database
 
