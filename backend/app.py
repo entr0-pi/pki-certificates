@@ -1492,6 +1492,31 @@ def _rewrite_paths_in_db(db_path: Path, old_data_dir: str, new_data_dir: Path) -
                     )
                     updated += 1
 
+            # Rewrite relative paths in certificates table (convert \ to / if crossing platforms)
+            if sep == "\\":  # Windows paths being restored elsewhere
+                cursor = conn.execute(
+                    "SELECT id, cert_path, key_path, csr_path, pwd_path FROM certificates"
+                )
+                for cert_id, cert_path, key_path, csr_path, pwd_path in cursor.fetchall():
+                    updates = {}
+                    if cert_path and "\\" in cert_path:
+                        updates["cert_path"] = cert_path.replace("\\", "/")
+                    if key_path and "\\" in key_path:
+                        updates["key_path"] = key_path.replace("\\", "/")
+                    if csr_path and "\\" in csr_path:
+                        updates["csr_path"] = csr_path.replace("\\", "/")
+                    if pwd_path and "\\" in pwd_path:
+                        updates["pwd_path"] = pwd_path.replace("\\", "/")
+
+                    if updates:
+                        set_clause = ", ".join(f"{col} = ?" for col in updates.keys())
+                        values = list(updates.values()) + [cert_id]
+                        conn.execute(
+                            f"UPDATE certificates SET {set_clause} WHERE id = ?",
+                            values
+                        )
+                        updated += len(updates)
+
             conn.commit()
         finally:
             conn.close()
