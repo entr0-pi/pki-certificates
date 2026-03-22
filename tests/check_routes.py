@@ -54,12 +54,19 @@ class TestResult:
 
 def find_repo_root() -> Path:
     """Find the repository root directory."""
-    current = Path(__file__).resolve()
+    # First try: look from the script's location
+    current = Path(__file__).resolve().parent.parent  # Up from tests/ to repo root
+    if (current / "backend" / "app.py").exists():
+        return current
+
+    # Second try: walk up from current location
+    current = Path.cwd()
     while current != current.parent:
         if (current / "backend" / "app.py").exists():
             return current
         current = current.parent
-    raise RuntimeError("Could not find repository root")
+
+    raise RuntimeError(f"Could not find repository root. Started from {Path(__file__).resolve().parent.parent}")
 
 
 def load_rbac_config(rbac_path: Path) -> dict:
@@ -531,8 +538,12 @@ Examples:
     rbac_path = repo_root / args.rbac
     if not rbac_path.exists():
         print(f"Error: rbac.json not found at {rbac_path}", file=sys.stderr)
+        print(f"Repo root detected at: {repo_root}", file=sys.stderr)
         return 1
     rbac_config = load_rbac_config(rbac_path)
+    if not rbac_config:
+        print(f"Error: rbac.json is empty or has no routes at {rbac_path}", file=sys.stderr)
+        return 1
 
     # Authenticate roles
     try:
@@ -557,6 +568,11 @@ Examples:
 
     # Build and run tests
     test_cases = build_test_cases(rbac_config, org_id, cert_id, issuer_name, filter_pattern=args.filter)
+    if not test_cases:
+        print(f"Warning: No test cases generated. Loaded {len(rbac_config)} routes from {rbac_path}", file=sys.stderr)
+        if args.filter:
+            print(f"  (Filter pattern '{args.filter}' may have excluded all routes)", file=sys.stderr)
+
     results = run_tests(
         args.base_url,
         test_cases,
