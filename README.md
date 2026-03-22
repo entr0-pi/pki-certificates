@@ -220,7 +220,8 @@ docs/
   *.md                             Operational, security, API, and frontend docs
 
 tests/
-  conftest.py
+  check_routes.py                  Route enforcement smoke test (RBAC verification on live app)
+  conftest.py                      Pytest fixtures for in-process testing
   requirements-dev.txt             Test-only Python dependencies
   test_*.py                        Backend and UI workflow coverage
 
@@ -277,11 +278,36 @@ For details, see [docs/ROUTES.md - Access Control Configuration](docs/ROUTES.md#
 
 ## Testing
 
+### Unit and Integration Tests
+
 ```bash
 pytest -v
 ```
 
 Install optional test dependencies from `tests/requirements-dev.txt` if your environment does not already have them.
+
+### Route Enforcement Smoke Test
+
+Test RBAC enforcement on a live running app:
+
+```bash
+# Start the app
+python backend/app.py
+
+# In another terminal, test all routes
+python tests/check_routes.py --base-url http://localhost:8000
+
+# Run with verbose output (show all routes)
+python tests/check_routes.py --base-url http://localhost:8000 --verbose
+
+# Test specific routes
+python tests/check_routes.py --base-url http://localhost:8000 --filter toolbox --verbose
+
+# Test with specific fixture IDs
+python tests/check_routes.py --base-url http://localhost:8000 --org-id 1 --cert-id 3 --issuer-name root-ca
+```
+
+The `check_routes.py` tool verifies that every route in `rbac.json` correctly enforces role-based access control by making real HTTP requests to the app with different authentication levels (unauthenticated, admin, manager, user). It tests all 32 routes across 4 identities (128 checks total). See [docs/TEST_PLAN.md](docs/TEST_PLAN.md) for details.
 
 ## Security
 

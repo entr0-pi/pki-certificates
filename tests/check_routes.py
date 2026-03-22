@@ -403,22 +403,41 @@ def print_results_table(
             by_route[key] = {}
         by_route[key][result.identity] = result
 
-    # Header
-    print(f"\npki-check-routes  base_url={base_url}")
-    fixture_source = "auto-discovered" if all_discovered else "with overrides/fallbacks"
-    print(f"Fixtures: org_id={org_id}  cert_id={cert_id}  issuer_name={issuer_name}  ({fixture_source})")
-    print(f"Routes: {len(by_route)} routes from rbac.json\n")
-
-    # Column headers
-    print(f"{'Route':<50} | {'unauth':<6} | {'admin':<6} | {'manager':<6} | {'user':<6}")
-    print("-" * 88)
-
-    # Results rows - always count, only print if verbose or has failures
+    # Count results
     passed = 0
     failed = 0
     warned = 0
     total = 0
 
+    for route_results in by_route.values():
+        for result in route_results.values():
+            if result.result == "PASS":
+                passed += 1
+            elif result.result == "FAIL":
+                failed += 1
+            elif result.result == "WARN":
+                warned += 1
+            total += 1
+
+    # Header
+    print(f"\npki-check-routes  base_url={base_url}")
+    fixture_source = "auto-discovered" if all_discovered else "with overrides/fallbacks"
+    print(f"Fixtures: org_id={org_id}  cert_id={cert_id}  issuer_name={issuer_name}  ({fixture_source})")
+    print(f"Routes: {len(by_route)} routes from rbac.json")
+
+    # If all passed, show success message
+    if failed == 0 and not verbose:
+        print(f"\n✅ All {total} RBAC checks passed!")
+        return 0
+
+    # Otherwise show table
+    print()
+
+    # Column headers
+    print(f"{'Route':<50} | {'unauth':<6} | {'admin':<6} | {'manager':<6} | {'user':<6}")
+    print("-" * 88)
+
+    # Results rows - only print if verbose or has failures
     for route_key in sorted(by_route.keys()):
         route_results = by_route[route_key]
 
@@ -426,19 +445,12 @@ def print_results_table(
         has_failure = any(r.result == "FAIL" for r in route_results.values())
         has_warning = any(r.result == "WARN" for r in route_results.values())
 
-        # Build cells and count all results
+        # Build cells
         cells = []
         for identity in ["unauth", "admin", "manager", "user"]:
             result = route_results.get(identity)
             if result:
                 cells.append(result.result)
-                if result.result == "PASS":
-                    passed += 1
-                elif result.result == "FAIL":
-                    failed += 1
-                elif result.result == "WARN":
-                    warned += 1
-                total += 1
             else:
                 cells.append("-")
 

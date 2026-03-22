@@ -258,6 +258,38 @@ Log out between roles and re-login each time.
 - [ ] CRL Distribution Cards - Responsive Layout: resize to tablet width and verify cards display in 2 columns.
 - [ ] CRL Distribution Cards - Responsive Layout: resize to full width and verify cards display in 3 columns.
 
+## Automated Route Enforcement Testing
+
+Use the `tests/check_routes.py` smoke test to verify RBAC enforcement on a live running app. This tool tests all 32 routes across 4 identities (128 checks):
+
+```bash
+# Start the app
+python backend/app.py
+
+# In another terminal, run the smoke test
+python tests/check_routes.py --base-url http://localhost:8000
+
+# Expected output: 128 tested  128 passed  0 failed  0 warned
+```
+
+**What it tests:**
+- ✅ Public routes are accessible without authentication
+- ✅ Protected routes reject unauthenticated requests (401 or redirect)
+- ✅ Admin-only routes return 403 for manager/user roles
+- ✅ Manager-allowed routes return 403 for user role
+- ✅ All authenticated requests to allowed routes return non-error status (200, 302, 404, 422, etc.)
+
+**Options:**
+- `--base-url URL` — target app URL (default: http://localhost:8000)
+- `--verbose` — show all routes including passes (default: show failures only)
+- `--filter PATTERN` — test only routes matching substring (e.g., `--filter toolbox`)
+- `--org-id`, `--cert-id`, `--issuer-name` — override fixture IDs for discovery
+- `--format json` — output JSON instead of table (for CI/CD integration)
+
+This test runs **before** manual E2E testing as a gate to catch RBAC regressions early.
+
+---
+
 ## Automated Test Coverage (Verify Per Run)
 
 These areas have automated tests in the repository, but you should still review the actual `pytest` result for skips or environment-specific gaps before relying on them:
