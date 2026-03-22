@@ -47,10 +47,8 @@ nano docker-compose.yml
 
 # create .env from this repository's .env.example and edit it
 # or generate it from the project root with:
-# python utils/generate_env.py --env dev --output pki/.env
+# python utils/generate_env.py --env production --output .env
 # see utils/README.md for details
-
-nano .env
 docker compose up -d
 ```
 
@@ -84,68 +82,21 @@ uv pip install -r tests/requirements-dev.txt
 
 ### 2. Configure environment
 
-Create a local `.env` file. The application auto-loads it at startup.
+Generate a `.env` file with all secrets auto-filled:
 
-Required secrets:
-
-- `PKI_ENCRYPTION_KEY`
-- `PKI_ENCRYPTION_SALT`
-- `PKI_API_KEY_ADMIN`
-- `PKI_API_KEY_MANAGER`
-- `PKI_API_KEY_USER`
-- `PKI_JWT_SECRET`
-
-Commonly used settings:
-
-| Variable | Default | Notes |
-|----------|---------|-------|
-| `PKI_HOST` | `0.0.0.0` | Bind address |
-| `PKI_PORT` | `8000` | FastAPI port |
-| `PKI_BASE_URL` | `http://localhost:8000` | Used in generated CRL distribution URLs |
-| `PKI_DB_AUTO_REINIT` | `false` | Rebuild invalid DB from schema and keep a `*.invalid.bak` backup |
-| `PKI_DATA_DIR` | `<repo>/data` | Must be an absolute path if set |
-| `PKI_DB_PATH` | `<repo>/database/pki.db` | Must be an absolute path if set |
-| `PKI_SESSION_MINUTES` | `60` | Session lifetime |
-| `PKI_AUTH_COOKIE_NAME` | `pki_session` | Session cookie name |
-| `PKI_COOKIE_SECURE` | `true` | Runtime default in code; must stay `true` behind HTTPS |
-| `PKI_COOKIE_SAMESITE` | `lax` | Cookie SameSite policy |
-| `PKI_COOKIE_DOMAIN` | empty | Optional cookie domain scope |
-
-Example `.env`:
-
-```dotenv
-PKI_HOST=127.0.0.1
-PKI_PORT=8000
-PKI_BASE_URL=http://localhost:8000
-PKI_DB_AUTO_REINIT=false
-
-PKI_DATA_DIR=
-PKI_DB_PATH=
-
-PKI_ENCRYPTION_KEY=replace-with-a-strong-random-value
-PKI_ENCRYPTION_SALT=replace-with-a-random-base64-salt
-
-PKI_API_KEY_ADMIN=replace-with-admin-api-key
-PKI_API_KEY_MANAGER=replace-with-manager-api-key
-PKI_API_KEY_USER=replace-with-user-api-key
-PKI_JWT_SECRET=replace-with-a-long-random-jwt-secret
-PKI_SESSION_MINUTES=60
-
-PKI_AUTH_COOKIE_NAME=pki_session
-PKI_COOKIE_SECURE=false
-PKI_COOKIE_SAMESITE=lax
-PKI_COOKIE_DOMAIN=
+```bash
+python utils/generate_env.py --env dev
 ```
 
-Notes:
+This creates `.env` from `.env.example` with cryptographically-generated values for all required secrets (`PKI_ENCRYPTION_KEY`, `PKI_ENCRYPTION_SALT`, `PKI_API_KEY_*`, `PKI_JWT_SECRET`).
 
-- Leave `PKI_DATA_DIR` and `PKI_DB_PATH` empty to use the repo defaults.
-- If you set either path, it must be absolute.
-- The application accepts your auth and cookie settings as provided; deployment hardening remains the operator's responsibility.
-- Use a strong `PKI_JWT_SECRET` and keep it at 32+ random characters even though the current code only requires it to be non-empty.
-- For local HTTP development, use `PKI_COOKIE_SECURE=false`; switch it to `true` for HTTPS deployments.
-- Do not tighten cookie or CSP settings in production without validating the affected login, form, download, and frontend flows in your environment.
-- Use `PKI_COOKIE_SECURE=true` in HTTPS deployments.
+Review and adjust key settings as needed:
+- `PKI_BASE_URL` — used in generated CRL distribution URLs
+- `PKI_HOST` — bind address (default `0.0.0.0`)
+- `PKI_PORT` — FastAPI port (default `8000`)
+- `PKI_COOKIE_SECURE` — set to `false` for local HTTP development, `true` for HTTPS
+
+For a full list of all environment variables and options (including `--env production`, `--output`, `--dry-run`), see [utils/README.md](utils/README.md).
 
 ### 3. Initialize the database
 
@@ -165,6 +116,16 @@ This compiles `frontend/static/src/input.css` into `frontend/static/vendor/bundl
 
 ```bash
 python backend/app.py
+```
+
+Or use the provided launcher script:
+
+```bash
+# Linux/macOS
+./scripts/start_webapp.sh
+
+# Windows (combines DB init + app in one step)
+scripts\start_webapp.bat
 ```
 
 Open `http://localhost:8000` and sign in with one of the configured API keys.
