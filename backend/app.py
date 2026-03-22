@@ -1409,10 +1409,11 @@ def _verify_restore_paths_writable(db_path: Path, data_dir: Path) -> tuple[bool,
     return True, ""
 
 
-def _detect_old_data_dir(db_path: Path) -> Path | None:
+def _detect_old_data_dir(db_path: Path) -> str | None:
     """
     Infer the data_dir used by a backup DB by inspecting org_dir values.
-    Returns None if there are no organizations (nothing to rewrite).
+    Returns the old data directory as a string (may contain backslashes for Windows paths),
+    or None if there are no organizations.
     """
     try:
         conn = sqlite3.connect(f"file:{db_path}?mode=ro", uri=True)
@@ -1428,42 +1429,68 @@ def _detect_old_data_dir(db_path: Path) -> Path | None:
     if not rows:
         return None
 
-    # All org_dir values share the same parent (the data dir)
-    parents = {str(Path(r).parent) for r in rows}
+    # Determine path separator (\ for Windows, / for Unix)
+    first_path = rows[0]
+    sep = "\\" if "\\" in first_path else "/"
+
+    # Extract parent directory by finding the last separator
+    def get_parent(path: str) -> str:
+        idx = path.rfind(sep)
+        return path[:idx] if idx > 0 else ""
+
+    parents = {get_parent(r) for r in rows}
     if len(parents) != 1:
-        logger.warning(f"Inconsistent org_dir parents in backup DB (found {len(parents)} different parents); skipping path rewrite")
+        logger.warning(f"Inconsistent org_dir parents in backup DB; skipping path rewrite")
         return None
 
-    return Path(parents.pop())
+    return parents.pop()
 
 
-def _rewrite_paths_in_db(db_path: Path, old_data_dir: Path, new_data_dir: Path) -> int:
+def _rewrite_paths_in_db(db_path: Path, old_data_dir: str, new_data_dir: Path) -> int:
     """
     Replace old_data_dir prefix with new_data_dir in all path-bearing columns.
+    Handles both Windows and Unix paths correctly.
     Returns the number of rows updated.
     """
-    old_prefix = str(old_data_dir)
+    old_prefix = old_data_dir
     new_prefix = str(new_data_dir)
     updated = 0
 
     try:
         conn = sqlite3.connect(str(db_path))
         try:
-            # Rewrite organizations.org_dir
-            cur = conn.execute(
-                "UPDATE organizations SET org_dir = ? || SUBSTR(org_dir, ?) "
-                "WHERE org_dir LIKE ?",
-                (new_prefix, len(old_prefix) + 1, old_prefix + "%")
-            )
-            updated += cur.rowcount
+            # Detect separator in old path (Windows uses \, Unix uses /)
+            sep = "\\" if "\\" in old_prefix else "/"
 
-            # Rewrite crls.crl_path if it stores absolute paths
-            cur = conn.execute(
-                "UPDATE crls SET crl_path = ? || SUBSTR(crl_path, ?) "
-                "WHERE crl_path LIKE ?",
-                (new_prefix, len(old_prefix) + 1, old_prefix + "%")
-            )
-            updated += cur.rowcount
+            # Rewrite organizations.org_dir
+            cursor = conn.execute("SELECT id, org_dir FROM organizations")
+            for org_id, org_dir in cursor.fetchall():
+                if org_dir.startswith(old_prefix):
+                    # Extract relative part after old prefix and separator
+                    rel_part = org_dir[len(old_prefix):]
+                    if rel_part.startswith(sep):
+                        rel_part = rel_part[1:]
+                    # Reconstruct with new prefix using forward slashes
+                    new_org_dir = f"{new_prefix}/{rel_part}" if rel_part else new_prefix
+                    conn.execute(
+                        "UPDATE organizations SET org_dir = ? WHERE id = ?",
+                        (new_org_dir, org_id)
+                    )
+                    updated += 1
+
+            # Rewrite crls.crl_path if it contains absolute paths
+            cursor = conn.execute("SELECT id, crl_path FROM crls")
+            for crl_id, crl_path in cursor.fetchall():
+                if crl_path.startswith(old_prefix):
+                    rel_part = crl_path[len(old_prefix):]
+                    if rel_part.startswith(sep):
+                        rel_part = rel_part[1:]
+                    new_crl_path = f"{new_prefix}/{rel_part}" if rel_part else new_prefix
+                    conn.execute(
+                        "UPDATE crls SET crl_path = ? WHERE id = ?",
+                        (new_crl_path, crl_id)
+                    )
+                    updated += 1
 
             conn.commit()
         finally:
@@ -1715,18 +1742,18 @@ async def restore_full_backup(request: Request, backup_file: UploadFile = File(.
         new_data_dir = get_data_dir()
         old_data_dir = _detect_old_data_dir(Path(restore_db_tmp_path))
 
-        if old_data_dir is not None and old_data_dir != new_data_dir:
-            logger.info(
-                f"Restore: detected data_dir mismatch. "
-                f"Rewriting paths: {old_data_dir} → {new_data_dir}"
-            )
-            updated = _rewrite_paths_in_db(Path(restore_db_tmp_path), old_data_dir, new_data_dir)
-            logger.info(f"Restore: rewrote {updated} path entries in restored DB")
-        else:
-            if old_data_dir is None:
-                logger.info("Restore: no path rewrite needed (empty DB or inconsistent paths)")
+        if old_data_dir is not None:
+            if old_data_dir != str(new_data_dir):
+                logger.info(
+                    f"Restore: detected data_dir mismatch. "
+                    f"Rewriting paths: {old_data_dir} → {new_data_dir}"
+                )
+                updated = _rewrite_paths_in_db(Path(restore_db_tmp_path), old_data_dir, new_data_dir)
+                logger.info(f"Restore: rewrote {updated} path entries in restored DB")
             else:
                 logger.info("Restore: no path rewrite needed (same data_dir)")
+        else:
+            logger.info("Restore: no path rewrite needed (empty DB or inconsistent paths)")
 
         # Phase 4: Extract data/ to staging
         data_restore_tmp = data_dir.parent / "data_restore_tmp"
