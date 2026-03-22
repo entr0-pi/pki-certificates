@@ -1412,14 +1412,12 @@ def _verify_restore_paths_writable(db_path: Path, data_dir: Path) -> tuple[bool,
 def _detect_old_data_dir(db_path: Path) -> str | None:
     """
     Infer the data_dir used by a backup DB by inspecting org_dir values.
-    Returns the old data directory as a string (may contain backslashes for Windows paths),
-    or None if there are no organizations.
+    Returns the old data directory as a string, or None if there are no organizations.
     """
     try:
         conn = sqlite3.connect(f"file:{db_path}?mode=ro", uri=True)
         try:
-            cursor = conn.execute("SELECT org_dir FROM organizations LIMIT 10")
-            rows = [row[0] for row in cursor.fetchall()]
+            rows = [row[0] for row in conn.execute("SELECT org_dir FROM organizations LIMIT 10")]
         finally:
             conn.close()
     except Exception as e:
@@ -1429,18 +1427,11 @@ def _detect_old_data_dir(db_path: Path) -> str | None:
     if not rows:
         return None
 
-    # Determine path separator (\ for Windows, / for Unix)
-    first_path = rows[0]
-    sep = "\\" if "\\" in first_path else "/"
+    sep = "\\" if "\\" in rows[0] else "/"
+    parents = {path[:path.rfind(sep)] for path in rows if path.rfind(sep) > 0}
 
-    # Extract parent directory by finding the last separator
-    def get_parent(path: str) -> str:
-        idx = path.rfind(sep)
-        return path[:idx] if idx > 0 else ""
-
-    parents = {get_parent(r) for r in rows}
     if len(parents) != 1:
-        logger.warning(f"Inconsistent org_dir parents in backup DB; skipping path rewrite")
+        logger.warning("Inconsistent org_dir parents in backup DB; skipping path rewrite")
         return None
 
     return parents.pop()
@@ -1448,72 +1439,57 @@ def _detect_old_data_dir(db_path: Path) -> str | None:
 
 def _rewrite_paths_in_db(db_path: Path, old_data_dir: str, new_data_dir: Path) -> int:
     """
-    Replace old_data_dir prefix with new_data_dir in all path-bearing columns.
-    Handles both Windows and Unix paths correctly.
-    Returns the number of rows updated.
+    Replace old_data_dir prefix with new_data_dir in path-bearing columns.
+    Handles both Windows and Unix paths. Returns the number of rows updated.
     """
-    old_prefix = old_data_dir
     new_prefix = str(new_data_dir)
+    sep = "\\" if "\\" in old_data_dir else "/"
     updated = 0
+
+    def rewrite_absolute(path: str) -> str | None:
+        """Rewrite absolute path if it starts with old prefix, else return None."""
+        if not path.startswith(old_data_dir):
+            return None
+        rel = path[len(old_data_dir):].lstrip(sep).replace("\\", "/")
+        return f"{new_prefix}/{rel}" if rel else new_prefix
 
     try:
         conn = sqlite3.connect(str(db_path))
         try:
-            # Detect separator in old path (Windows uses \, Unix uses /)
-            sep = "\\" if "\\" in old_prefix else "/"
-
-            # Rewrite organizations.org_dir
-            cursor = conn.execute("SELECT id, org_dir FROM organizations")
-            for org_id, org_dir in cursor.fetchall():
-                if org_dir.startswith(old_prefix):
-                    # Extract relative part after old prefix and separator
-                    rel_part = org_dir[len(old_prefix):]
-                    if rel_part.startswith(sep):
-                        rel_part = rel_part[1:]
-                    # Reconstruct with new prefix using forward slashes
-                    new_org_dir = f"{new_prefix}/{rel_part}" if rel_part else new_prefix
-                    conn.execute(
-                        "UPDATE organizations SET org_dir = ? WHERE id = ?",
-                        (new_org_dir, org_id)
-                    )
+            # Rewrite organizations.org_dir (absolute paths)
+            for org_id, org_dir in conn.execute("SELECT id, org_dir FROM organizations"):
+                new_path = rewrite_absolute(org_dir)
+                if new_path:
+                    conn.execute("UPDATE organizations SET org_dir = ? WHERE id = ?", (new_path, org_id))
                     updated += 1
 
-            # Rewrite crls.crl_path if it contains absolute paths
-            cursor = conn.execute("SELECT id, crl_path FROM crls")
-            for crl_id, crl_path in cursor.fetchall():
-                if crl_path.startswith(old_prefix):
-                    rel_part = crl_path[len(old_prefix):]
-                    if rel_part.startswith(sep):
-                        rel_part = rel_part[1:]
-                    new_crl_path = f"{new_prefix}/{rel_part}" if rel_part else new_prefix
-                    conn.execute(
-                        "UPDATE crls SET crl_path = ? WHERE id = ?",
-                        (new_crl_path, crl_id)
-                    )
+            # Rewrite crls.crl_path (absolute or relative)
+            for crl_id, crl_path in conn.execute("SELECT id, crl_path FROM crls"):
+                new_path = rewrite_absolute(crl_path)
+                if new_path:
+                    conn.execute("UPDATE crls SET crl_path = ? WHERE id = ?", (new_path, crl_id))
+                    updated += 1
+                elif sep == "\\" and "\\" in crl_path:
+                    new_path = crl_path.replace("\\", "/")
+                    conn.execute("UPDATE crls SET crl_path = ? WHERE id = ?", (new_path, crl_id))
                     updated += 1
 
-            # Rewrite relative paths in certificates table (convert \ to / if crossing platforms)
-            if sep == "\\":  # Windows paths being restored elsewhere
-                cursor = conn.execute(
+            # Rewrite certificate paths (relative paths with backslashes)
+            if sep == "\\":
+                for cert_id, cert_path, key_path, csr_path, pwd_path in conn.execute(
                     "SELECT id, cert_path, key_path, csr_path, pwd_path FROM certificates"
-                )
-                for cert_id, cert_path, key_path, csr_path, pwd_path in cursor.fetchall():
+                ):
                     updates = {}
-                    if cert_path and "\\" in cert_path:
-                        updates["cert_path"] = cert_path.replace("\\", "/")
-                    if key_path and "\\" in key_path:
-                        updates["key_path"] = key_path.replace("\\", "/")
-                    if csr_path and "\\" in csr_path:
-                        updates["csr_path"] = csr_path.replace("\\", "/")
-                    if pwd_path and "\\" in pwd_path:
-                        updates["pwd_path"] = pwd_path.replace("\\", "/")
+                    for col, val in [("cert_path", cert_path), ("key_path", key_path),
+                                      ("csr_path", csr_path), ("pwd_path", pwd_path)]:
+                        if val and "\\" in val:
+                            updates[col] = val.replace("\\", "/")
 
                     if updates:
                         set_clause = ", ".join(f"{col} = ?" for col in updates.keys())
-                        values = list(updates.values()) + [cert_id]
                         conn.execute(
                             f"UPDATE certificates SET {set_clause} WHERE id = ?",
-                            values
+                            list(updates.values()) + [cert_id]
                         )
                         updated += len(updates)
 
