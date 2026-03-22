@@ -1593,8 +1593,22 @@ async def restore_full_backup(request: Request, backup_file: UploadFile = File(.
         # Phase 5: Atomic DB swap (point of no return begins)
         db_old = db_path.with_suffix(".restore_old")
         try:
+            # Close all existing connections and clear engine state
             db.engine.dispose()
+
+            # Move old database and its WAL files to backup
             db_path.replace(db_old)
+            # Also move WAL files if they exist (SQLite uses .db-wal and .db-shm for WAL mode)
+            for wal_suffix in [".db-wal", ".db-shm"]:
+                wal_path = db_old.with_suffix(wal_suffix)
+                old_wal = db_path.with_suffix(wal_suffix)
+                if old_wal.exists():
+                    try:
+                        old_wal.replace(wal_path)
+                    except Exception as e:
+                        logger.warning(f"Failed to move WAL file {old_wal}: {e}")
+
+            # Move new database into place
             shutil.move(restore_db_tmp_path, str(db_path))
         except Exception as e:
             # Attempt recovery
@@ -1620,12 +1634,12 @@ async def restore_full_backup(request: Request, backup_file: UploadFile = File(.
                 "/toolbox?restore=error&detail=Database+swap+failed", status_code=303
             )
 
-        # Phase 5b: Dispose engine after successful DB swap to clear connection pool
-        # This ensures subsequent requests use the new database, not cached connections
+        # Phase 5b: Reinitialize database engine after successful DB swap
+        # This recreates the engine to ensure all internal caches and connections use the new database
         try:
-            db.engine.dispose()
+            db.reinitialize_engine()
         except Exception as e:
-            logger.warning(f"Failed to dispose engine after DB swap: {e}")
+            logger.warning(f"Failed to reinitialize engine after DB swap: {e}")
 
         # Phase 6: Atomic data/ swap (handles mounted volumes)
         data_old = data_dir.parent / "data_restore_old"

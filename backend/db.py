@@ -46,6 +46,30 @@ def _set_sqlite_pragmas(dbapi_conn, _):
     dbapi_conn.execute("PRAGMA foreign_keys=ON")
 
 
+def reinitialize_engine() -> None:
+    """
+    Reinitialize the SQLAlchemy engine.
+    Call this after replacing the database file on disk (e.g., during backup restore).
+    This recreates the engine to ensure all internal caches and connections use the new database.
+    """
+    global engine
+
+    # Dispose the existing engine
+    engine.dispose()
+
+    # Recreate the engine
+    engine = create_engine(
+        f"sqlite:///{DB_PATH}",
+        connect_args={"check_same_thread": False},
+    )
+
+    # Re-register the pragma listener
+    @event.listens_for(engine, "connect")
+    def _set_sqlite_pragmas(dbapi_conn, _):
+        dbapi_conn.execute("PRAGMA journal_mode=WAL")
+        dbapi_conn.execute("PRAGMA foreign_keys=ON")
+
+
 def _validate_schema_version(conn) -> None:
     """
     Check that the schema_version table exists and matches SCHEMA_VERSION.
