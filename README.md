@@ -1,4 +1,3 @@
-> [!INFO]
 > This project is production ready.
 > It is intended for production deployments with the hardening and operational guidance documented in this repository.
 > Review the deployment, security, backup, and environment configuration sections before rollout.
