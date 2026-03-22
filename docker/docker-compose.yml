@@ -1,6 +1,7 @@
 
 services:
   pki:
+    # Use latest for testing, but consider pinning to a specific version for production deployments (e.g., ghcr.io/entr0-pi/pki-certificates:v2.0.0) 
     image: ghcr.io/entr0-pi/pki-certificates:latest
     container_name: pki
     ports:
@@ -9,7 +10,7 @@ services:
     environment:
       # ===== Docker-specific values =====
 
-      # Server binding for container networking
+      # Server binding for container networking (port should be exposed in ports: section above)
       PKI_HOST: 0.0.0.0
       PKI_PORT: 8000
 
@@ -25,9 +26,12 @@ services:
       PKI_COOKIE_SECURE: "false"
 
       # Base URL for issued certificates
+      # Local development: http://localhost:8000
+      # Production example: https://pki.yourdomain.com
       PKI_BASE_URL: http://localhost:8000
 
     # Load secrets and other configuration from .env (copy from ../.env.example)
+    # Use the tool utils/generate_env.py to generate a .env file with secure random values for the encryption key and other secrets
     env_file:
       - .env
 
@@ -45,8 +49,9 @@ services:
       # Uncomment to use, chmod -R 777 ./database to allow container access)
       #- ./database:/app/database
 
+    # No need to change the following settings for typical usage, but adjust as needed for your environment
     healthcheck:
-      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/healthz').read()"]
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://pki:8000/healthz').read()"]
       interval: 30s
       timeout: 10s
       retries: 3

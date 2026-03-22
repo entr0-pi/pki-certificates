@@ -204,6 +204,8 @@ backend/
     rbac.json                      Route-to-role authorization map (single source of truth for all routes)
   openssl/
     config.txt                     OpenSSL config assets (for reference only, not used)
+  schema/
+    pki_schema.sql                 SQL schema
 
 frontend/
   templates/                       Jinja HTML templates
@@ -211,9 +213,6 @@ frontend/
     src/input.css                  Tailwind source file
     vendor/bundle.css              Built CSS served by FastAPI
     *.js                           Small UI behaviors
-
-backend/schema/
-  pki_schema.sql                   SQLite schema (v3: fingerprint_sha256, audit IP/role, composite indexes)
 
 docs/
   *.md                             Operational, security, API, and frontend docs
@@ -230,7 +229,6 @@ scripts/
 utils/
   generate_env.py                  Creates `.env` from `.env.example` and generates secret values
   encryption_manager.py            CLI tool to decrypt or rotate encrypted PKI artifacts
-  README.md                        Usage instructions for utils scripts
 
 .env.example                       Environment file (example)
 package.json                       npm scripts for frontend asset builds
@@ -273,7 +271,7 @@ For details, see [docs/ROUTES.md - Access Control Configuration](docs/ROUTES.md#
 | [docs/FRONTEND.md](docs/FRONTEND.md) | Tailwind/DaisyUI frontend build workflow and asset pipeline |
 | [docs/CRON_JOBS.md](docs/CRON_JOBS.md) | Scheduling guidance for consistency checks and maintenance tasks |
 | [docs/TEST_PLAN.md](docs/TEST_PLAN.md) | Test scope and verification strategy |
-| [docs/SKELETON.md](docs/SKELETON.md) | Project skeleton/reference layout |
+| [docs/DATA_TREE.md](docs/DATA_TREE.md) | Project skeleton/reference layout |
 
 ## Testing
 

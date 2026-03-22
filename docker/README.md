@@ -30,7 +30,7 @@ python utils/generate_env.py --env dev --output docker/.env
 # Review the generated file and adjust Docker-specific values if needed
 ```
 
-See [../utils/QUICKSTART.md](../utils/QUICKSTART.md) for the generator behavior, profiles, and flags.
+See [../utils/README.md](../utils/README.md) for the generator behavior, profiles, and flags.
 
 ```bash
 cd docker/
@@ -112,7 +112,7 @@ The PKI app uses **SQLite + local encrypted filesystem** and **must run as a sin
 ## Environment Variables
 
 See [../.env.example](../.env.example) for complete documentation of all configuration options.
-You can also generate `docker/.env` with [../utils/generate_env.py](../utils/generate_env.py); see [../utils/QUICKSTART.md](../utils/QUICKSTART.md).
+You can also generate `docker/.env` with [../utils/generate_env.py](../utils/generate_env.py); see [../utils/README.md](../utils/README.md).
 
 **Docker-specific settings** (hardcoded in docker-compose.yml, do not edit in .env):
 - `PKI_HOST=0.0.0.0` — Required for container networking
