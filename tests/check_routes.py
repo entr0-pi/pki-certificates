@@ -406,13 +406,14 @@ def print_results_table(
     # Header
     print(f"\npki-check-routes  base_url={base_url}")
     fixture_source = "auto-discovered" if all_discovered else "with overrides/fallbacks"
-    print(f"Fixtures: org_id={org_id}  cert_id={cert_id}  issuer_name={issuer_name}  ({fixture_source})\n")
+    print(f"Fixtures: org_id={org_id}  cert_id={cert_id}  issuer_name={issuer_name}  ({fixture_source})")
+    print(f"Routes: {len(by_route)} routes from rbac.json\n")
 
     # Column headers
     print(f"{'Route':<50} | {'unauth':<6} | {'admin':<6} | {'manager':<6} | {'user':<6}")
     print("-" * 88)
 
-    # Results rows
+    # Results rows - always count, only print if verbose or has failures
     passed = 0
     failed = 0
     warned = 0
@@ -421,26 +422,28 @@ def print_results_table(
     for route_key in sorted(by_route.keys()):
         route_results = by_route[route_key]
 
-        # Only print if verbose or has failures
+        # Check for failures
         has_failure = any(r.result == "FAIL" for r in route_results.values())
         has_warning = any(r.result == "WARN" for r in route_results.values())
 
-        if verbose or has_failure or has_warning:
-            cells = []
-            for identity in ["unauth", "admin", "manager", "user"]:
-                result = route_results.get(identity)
-                if result:
-                    cells.append(result.result)
-                    if result.result == "PASS":
-                        passed += 1
-                    elif result.result == "FAIL":
-                        failed += 1
-                    elif result.result == "WARN":
-                        warned += 1
-                    total += 1
-                else:
-                    cells.append("-")
+        # Build cells and count all results
+        cells = []
+        for identity in ["unauth", "admin", "manager", "user"]:
+            result = route_results.get(identity)
+            if result:
+                cells.append(result.result)
+                if result.result == "PASS":
+                    passed += 1
+                elif result.result == "FAIL":
+                    failed += 1
+                elif result.result == "WARN":
+                    warned += 1
+                total += 1
+            else:
+                cells.append("-")
 
+        # Print if verbose or has failures
+        if verbose or has_failure or has_warning:
             print(f"{route_key:<50} | {cells[0]:<6} | {cells[1]:<6} | {cells[2]:<6} | {cells[3]:<6}")
 
             # Print failure details
