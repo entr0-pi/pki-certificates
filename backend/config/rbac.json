@@ -31,5 +31,5 @@
   "POST /organizations/{org_id}/certificates/{cert_id}/revoke": ["admin"],
   "GET /organizations/{org_id}/certificates/{cert_id}/private-key/plain": ["admin"],
   "GET /api/organizations/{org_id}/crls": ["admin", "manager", "user"],
-  "GET /api/check-consistency": ["admin", "manager"]
+  "GET /api/check-consistency": ["admin", "manager", "user"]
 }
