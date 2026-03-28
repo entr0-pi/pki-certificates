@@ -250,8 +250,9 @@ async def http_exception_handler(request: Request, exc):
                 # Return HTML 403 page
                 role = getattr(request.state, "role", "unknown")
                 return templates.TemplateResponse(
+                    request,
                     "403.html",
-                    {"request": request, "role": role},
+                    {"role": role},
                     status_code=403,
                 )
             except Exception as template_error:
@@ -501,8 +502,9 @@ async def login_page(request: Request):
             is_authenticated = False
 
     return templates.TemplateResponse(
+        request,
         "login.html",
-        {"request": request, "error": None, "is_authenticated": is_authenticated},
+        {"error": None, "is_authenticated": is_authenticated},
     )
 
 
@@ -512,8 +514,9 @@ async def create_auth_session(request: Request, api_key: str = Form(...)):
     role = resolve_role(api_key, settings)
     if not role:
         return templates.TemplateResponse(
+            request,
             "login.html",
-            {"request": request, "error": "Invalid API key."},
+            {"error": "Invalid API key."},
             status_code=401,
         )
 
@@ -1087,9 +1090,9 @@ async def landing_page(request: Request):
         )
 
         return templates.TemplateResponse(
+            request,
             "landing.html",
             {
-                "request": request,
                 "role": getattr(request.state, "role", "user"),
                 "organizations": organizations,
                 "org_count": org_count,
@@ -1104,9 +1107,9 @@ async def landing_page(request: Request):
         logger.exception("Error loading landing page")
         # Return page with empty organization list if database error
         return templates.TemplateResponse(
+            request,
             "landing.html",
             {
-                "request": request,
                 "role": getattr(request.state, "role", "user"),
                 "organizations": [],
                 "org_count": 0,
@@ -1131,8 +1134,9 @@ async def toolbox_page(
 ):
     """Toolbox landing page for future utility tools."""
     return templates.TemplateResponse(
+        request,
         "toolbox.html",
-        {"request": request, "restore": restore, "restore_detail": detail},
+        {"restore": restore, "restore_detail": detail},
     )
 
 
@@ -1209,9 +1213,9 @@ async def create_organization_endpoint(
 
         # Return success page with organization details
         return templates.TemplateResponse(
+            request,
             "success.html",
             {
-                "request": request,
                 "org_id": org_id,
                 "org_name": org_dir_absolute,
                 "org_display_name": org_display_name,
@@ -1225,9 +1229,9 @@ async def create_organization_endpoint(
             f"Database integrity error during organization creation for {org_display_name}"
         )
         return templates.TemplateResponse(
+            request,
             "error.html",
             {
-                "request": request,
                 "error_message": f"Organization '{org_display_name}' already exists in the database.",
                 "org_name": org_display_name,
             },
@@ -1235,9 +1239,9 @@ async def create_organization_endpoint(
     except subprocess.CalledProcessError as e:
         logger.exception(f"Failed to create organization folders")
         return templates.TemplateResponse(
+            request,
             "error.html",
             {
-                "request": request,
                 "error_message": "Failed to create organization folders. Please contact an administrator.",
                 "org_name": org_display_name,
             },
@@ -1245,9 +1249,9 @@ async def create_organization_endpoint(
     except TimeoutError as e:
         logger.exception("Organization creation subprocess timed out")
         return templates.TemplateResponse(
+            request,
             "error.html",
             {
-                "request": request,
                 "error_message": "Organization creation process timed out. Please try again.",
                 "org_name": org_display_name,
             },
@@ -1255,9 +1259,9 @@ async def create_organization_endpoint(
     except Exception as e:
         logger.exception(f"Unexpected error during organization creation")
         return templates.TemplateResponse(
+            request,
             "error.html",
             {
-                "request": request,
                 "error_message": "An unexpected error occurred. Please contact an administrator.",
                 "org_name": org_display_name,
             },
@@ -1985,9 +1989,9 @@ async def manage_organization(request: Request, org_id: int):
     org = db.get_organization_by_id(org_id)
     if not org:
         return templates.TemplateResponse(
+            request,
             "error.html",
             {
-                "request": request,
                 "error_message": f"Organization ID {org_id} not found.",
                 "org_name": None,
             },
@@ -2009,9 +2013,9 @@ async def manage_organization(request: Request, org_id: int):
         audit_logs = db.get_recent_audit_logs(org_id, limit=20)
         hierarchy = db.get_certificate_hierarchy(org_id)
         return templates.TemplateResponse(
+            request,
             "organization_dashboard.html",
             {
-                "request": request,
                 "organization": org,
                 "stats": stats,
                 "certificates": certificates,
@@ -2030,9 +2034,9 @@ async def manage_organization(request: Request, org_id: int):
     except Exception as e:
         logger.error(f"Error loading organization dashboard: {e}")
         return templates.TemplateResponse(
+            request,
             "error.html",
             {
-                "request": request,
                 "error_message": f"Error loading dashboard: {str(e)}",
                 "org_name": org["name"],
             },
@@ -2049,9 +2053,9 @@ async def create_certificate_page(request: Request, org_id: int):
     org = db.get_organization_by_id(org_id)
     if not org:
         return templates.TemplateResponse(
+            request,
             "error.html",
             {
-                "request": request,
                 "error_message": f"Organization ID {org_id} not found.",
                 "org_name": None,
             },
@@ -2094,9 +2098,9 @@ async def create_certificate_page(request: Request, org_id: int):
     ocsp_policy = _load_role_policy("end-entity-ocsp")
 
     return templates.TemplateResponse(
+        request,
         "create_certificate.html",
         {
-            "request": request,
             "organization": org,
             "role": role,
             "ui_permissions": ui_permissions,
@@ -2149,9 +2153,9 @@ async def certificate_popup(request: Request, org_id: int, cert_id: int):
     org = db.get_organization_by_id(org_id)
     if not org:
         return templates.TemplateResponse(
+            request,
             "error.html",
             {
-                "request": request,
                 "error_message": f"Organization ID {org_id} not found.",
                 "org_name": None,
             },
@@ -2160,9 +2164,9 @@ async def certificate_popup(request: Request, org_id: int, cert_id: int):
     cert = db.get_certificate_by_id_for_organization(cert_id, org_id)
     if not cert:
         return templates.TemplateResponse(
+            request,
             "error.html",
             {
-                "request": request,
                 "error_message": f"Certificate ID {cert_id} not found for organization {org_id}.",
                 "org_name": org["name"],
             },
@@ -2189,9 +2193,9 @@ async def certificate_popup(request: Request, org_id: int, cert_id: int):
         )
 
     return templates.TemplateResponse(
+        request,
         "certificate_popup.html",
         {
-            "request": request,
             "organization": org,
             "certificate": cert,
             "san_str": san_str,
@@ -2219,9 +2223,9 @@ async def renew_certificate_page(request: Request, org_id: int, cert_id: int):
     org = db.get_organization_by_id(org_id)
     if not org:
         return templates.TemplateResponse(
+            request,
             "error.html",
             {
-                "request": request,
                 "error_message": f"Organization ID {org_id} not found.",
                 "org_name": None,
             },
@@ -2230,9 +2234,9 @@ async def renew_certificate_page(request: Request, org_id: int, cert_id: int):
     cert = db.get_certificate_by_id_for_organization(cert_id, org_id)
     if not cert:
         return templates.TemplateResponse(
+            request,
             "error.html",
             {
-                "request": request,
                 "error_message": f"Certificate ID {cert_id} not found for organization {org_id}.",
                 "org_name": org["name"],
             },
@@ -2273,9 +2277,9 @@ async def renew_certificate_page(request: Request, org_id: int, cert_id: int):
     default_days = _get_default_days_for_cert_type(cert_type)
 
     return templates.TemplateResponse(
+        request,
         "renew_certificate.html",
         {
-            "request": request,
             "organization": org,
             "certificate": cert,
             "form_action": form_action,
@@ -3049,9 +3053,9 @@ async def root_ca_page(request: Request, org_id: int):
     org = db.get_organization_by_id(org_id)
     if not org:
         return templates.TemplateResponse(
+            request,
             "error.html",
             {
-                "request": request,
                 "error_message": f"Organization ID {org_id} not found.",
                 "org_name": None,
             },
@@ -3061,9 +3065,9 @@ async def root_ca_page(request: Request, org_id: int):
     existing_root = get_latest_active_root_ca_name(org_id)
     if existing_root:
         return templates.TemplateResponse(
+            request,
             "error.html",
             {
-                "request": request,
                 "error_message": f"Root CA already exists for this organization: {existing_root}. Only one Root CA is allowed per organization.",
                 "org_name": org["name"],
             },
@@ -3103,9 +3107,9 @@ async def create_root_ca(
     org = db.get_organization_by_id(org_id)
     if not org:
         return templates.TemplateResponse(
+            request,
             "error.html",
             {
-                "request": request,
                 "error_message": f"Organization ID {org_id} not found.",
                 "org_name": None,
             },
@@ -3115,9 +3119,9 @@ async def create_root_ca(
     existing_root = get_latest_active_root_ca_name(org_id)
     if existing_root:
         return templates.TemplateResponse(
+            request,
             "error.html",
             {
-                "request": request,
                 "error_message": f"Root CA already exists for this organization: {existing_root}. Only one Root CA is allowed per organization.",
                 "org_name": org["name"],
             },
@@ -3138,9 +3142,9 @@ async def create_root_ca(
     cert_uuid = str(uuid.uuid4())
     if not cert_name_clean:
         return templates.TemplateResponse(
+            request,
             "error.html",
             {
-                "request": request,
                 "error_title": "Certificate Creation Failed",
                 "error_message": "Invalid certificate name.",
                 "org_name": org["name"],
@@ -3195,9 +3199,9 @@ async def create_root_ca(
                         ]
                     )
                     return templates.TemplateResponse(
+                        request,
                         "error.html",
                         {
-                            "request": request,
                             "error_message": f"Cannot renew this certificate because it has active subordinate certificates: {child_names}. Please revoke child certificates first.",
                             "org_name": org["name"],
                         },
@@ -3231,9 +3235,9 @@ async def create_root_ca(
             )
             _cleanup_cert_files(ws)
             return templates.TemplateResponse(
+                request,
                 "error.html",
                 {
-                    "request": request,
                     "error_title": "Certificate Creation Failed",
                     "error_message": "Certificate files are missing after creation. Please try again.",
                     "org_name": org["name"],
@@ -3276,9 +3280,9 @@ async def create_root_ca(
         renewal_error = _handle_renewal_post_commit(org, org_id, renewal_of_cert_id)
         if renewal_error:
             return templates.TemplateResponse(
+                request,
                 "error.html",
                 {
-                    "request": request,
                     "error_message": renewal_error["message"],
                     "child_certs": renewal_error.get("child_certs", []),
                     "org_name": org["name"],
@@ -3287,9 +3291,9 @@ async def create_root_ca(
 
         # Show success page with generated password
         return templates.TemplateResponse(
+            request,
             "root_ca_password_display.html",
             {
-                "request": request,
                 "organization": org,
                 "cert_name": cert_name_clean,
                 "generated_password": root_ca_password,
@@ -3302,9 +3306,9 @@ async def create_root_ca(
         if ws and not db_committed:
             _cleanup_cert_files(ws)
         return templates.TemplateResponse(
+            request,
             "error.html",
             {
-                "request": request,
                 "error_title": "Certificate Creation Failed",
                 "error_message": "Certificate creation process failed. Please contact an administrator.",
                 "org_name": org["name"],
@@ -3317,9 +3321,9 @@ async def create_root_ca(
         if ws and not db_committed:
             _cleanup_cert_files(ws)
         return templates.TemplateResponse(
+            request,
             "error.html",
             {
-                "request": request,
                 "error_title": "Certificate Creation Failed",
                 "error_message": "Certificate creation process timed out. Please try again.",
                 "org_name": org["name"],
@@ -3330,9 +3334,9 @@ async def create_root_ca(
         if ws and not db_committed:
             _cleanup_cert_files(ws)
         return templates.TemplateResponse(
+            request,
             "error.html",
             {
-                "request": request,
                 "error_title": "Certificate Creation Failed",
                 "error_message": "An unexpected error occurred. Please contact an administrator.",
                 "org_name": org["name"],
@@ -3348,9 +3352,9 @@ async def intermediate_ca_page(request: Request, org_id: int):
     org = db.get_organization_by_id(org_id)
     if not org:
         return templates.TemplateResponse(
+            request,
             "error.html",
             {
-                "request": request,
                 "error_message": f"Organization ID {org_id} not found.",
                 "org_name": None,
             },
@@ -3387,9 +3391,9 @@ async def create_intermediate_ca(
     org = db.get_organization_by_id(org_id)
     if not org:
         return templates.TemplateResponse(
+            request,
             "error.html",
             {
-                "request": request,
                 "error_message": f"Organization ID {org_id} not found.",
                 "org_name": None,
             },
@@ -3399,9 +3403,9 @@ async def create_intermediate_ca(
 
     if not root_ca:
         return templates.TemplateResponse(
+            request,
             "error.html",
             {
-                "request": request,
                 "error_title": "Certificate Creation Failed",
                 "error_message": "No Root CA found. Please create a Root CA first.",
                 "org_name": org["name"],
@@ -3439,9 +3443,9 @@ async def create_intermediate_ca(
 
     if not cert_name_clean:
         return templates.TemplateResponse(
+            request,
             "error.html",
             {
-                "request": request,
                 "error_title": "Certificate Creation Failed",
                 "error_message": "Invalid certificate name.",
                 "org_name": org["name"],
@@ -3512,9 +3516,9 @@ async def create_intermediate_ca(
                         ]
                     )
                     return templates.TemplateResponse(
+                        request,
                         "error.html",
                         {
-                            "request": request,
                             "error_message": f"Cannot renew this certificate because it has active subordinate certificates: {child_names}. Please revoke child certificates first.",
                             "org_name": org["name"],
                         },
@@ -3547,9 +3551,9 @@ async def create_intermediate_ca(
             )
             _cleanup_cert_files(ws)
             return templates.TemplateResponse(
+                request,
                 "error.html",
                 {
-                    "request": request,
                     "error_title": "Certificate Creation Failed",
                     "error_message": "Certificate files are missing after creation. Please try again.",
                     "org_name": org["name"],
@@ -3605,9 +3609,9 @@ async def create_intermediate_ca(
         renewal_error = _handle_renewal_post_commit(org, org_id, renewal_of_cert_id)
         if renewal_error:
             return templates.TemplateResponse(
+                request,
                 "error.html",
                 {
-                    "request": request,
                     "error_message": renewal_error["message"],
                     "child_certs": renewal_error.get("child_certs", []),
                     "org_name": org["name"],
@@ -3621,9 +3625,9 @@ async def create_intermediate_ca(
         if ws and not db_committed:
             _cleanup_cert_files(ws)
         return templates.TemplateResponse(
+            request,
             "error.html",
             {
-                "request": request,
                 "error_title": "Certificate Creation Failed",
                 "error_message": "Certificate creation process failed. Please contact an administrator.",
                 "org_name": org["name"],
@@ -3636,9 +3640,9 @@ async def create_intermediate_ca(
         if ws and not db_committed:
             _cleanup_cert_files(ws)
         return templates.TemplateResponse(
+            request,
             "error.html",
             {
-                "request": request,
                 "error_title": "Certificate Creation Failed",
                 "error_message": "Certificate creation process timed out. Please try again.",
                 "org_name": org["name"],
@@ -3651,9 +3655,9 @@ async def create_intermediate_ca(
         if ws and not db_committed:
             _cleanup_cert_files(ws)
         return templates.TemplateResponse(
+            request,
             "error.html",
             {
-                "request": request,
                 "error_title": "Certificate Creation Failed",
                 "error_message": "An unexpected error occurred. Please contact an administrator.",
                 "org_name": org["name"],
@@ -3667,9 +3671,9 @@ async def end_entity_page(request: Request, org_id: int):
     org = db.get_organization_by_id(org_id)
     if not org:
         return templates.TemplateResponse(
+            request,
             "error.html",
             {
-                "request": request,
                 "error_message": f"Organization ID {org_id} not found.",
                 "org_name": None,
             },
@@ -3708,9 +3712,9 @@ async def create_end_entity(
     org = db.get_organization_by_id(org_id)
     if not org:
         return templates.TemplateResponse(
+            request,
             "error.html",
             {
-                "request": request,
                 "error_message": f"Organization ID {org_id} not found.",
                 "org_name": None,
             },
@@ -3719,9 +3723,9 @@ async def create_end_entity(
     # Validate cert_type
     if cert_type not in ["server", "client", "email", "ocsp"]:
         return templates.TemplateResponse(
+            request,
             "error.html",
             {
-                "request": request,
                 "error_message": f"Invalid certificate type: {cert_type}",
                 "org_name": org["name"],
             },
@@ -3739,9 +3743,9 @@ async def create_end_entity(
 
     if not cert_name_clean:
         return templates.TemplateResponse(
+            request,
             "error.html",
             {
-                "request": request,
                 "error_title": "Certificate Creation Failed",
                 "error_message": "Invalid certificate name.",
                 "org_name": org["name"],
@@ -3750,9 +3754,9 @@ async def create_end_entity(
 
     if issuer_type_clean != "intermediate":
         return templates.TemplateResponse(
+            request,
             "error.html",
             {
-                "request": request,
                 "error_title": "Certificate Creation Failed",
                 "error_message": "End-entity certificates must be issued by an Intermediate CA.",
                 "org_name": org["name"],
@@ -3764,9 +3768,9 @@ async def create_end_entity(
     }
     if issuer_name_clean not in available_issuers:
         return templates.TemplateResponse(
+            request,
             "error.html",
             {
-                "request": request,
                 "error_title": "Certificate Creation Failed",
                 "error_message": "Selected issuer is not available.",
                 "org_name": org["name"],
@@ -3781,9 +3785,9 @@ async def create_end_entity(
     )
     if not issuer_cert:
         return templates.TemplateResponse(
+            request,
             "error.html",
             {
-                "request": request,
                 "error_title": "Certificate Creation Failed",
                 "error_message": "Issuer certificate not found.",
                 "org_name": org["name"],
@@ -3861,9 +3865,9 @@ async def create_end_entity(
                         ]
                     )
                     return templates.TemplateResponse(
+                        request,
                         "error.html",
                         {
-                            "request": request,
                             "error_message": f"Cannot renew this certificate because it has active subordinate certificates: {child_names}. Please revoke child certificates first.",
                             "org_name": org["name"],
                         },
@@ -3901,9 +3905,9 @@ async def create_end_entity(
             )
             _cleanup_cert_files(ws)
             return templates.TemplateResponse(
+                request,
                 "error.html",
                 {
-                    "request": request,
                     "error_title": "Certificate Creation Failed",
                     "error_message": "Certificate files are missing after creation. Please try again.",
                     "org_name": org["name"],
@@ -3943,9 +3947,9 @@ async def create_end_entity(
         renewal_error = _handle_renewal_post_commit(org, org_id, renewal_of_cert_id)
         if renewal_error:
             return templates.TemplateResponse(
+                request,
                 "error.html",
                 {
-                    "request": request,
                     "error_message": renewal_error["message"],
                     "child_certs": renewal_error.get("child_certs", []),
                     "org_name": org["name"],
@@ -3959,9 +3963,9 @@ async def create_end_entity(
         if ws and not db_committed:
             _cleanup_cert_files(ws)
         return templates.TemplateResponse(
+            request,
             "error.html",
             {
-                "request": request,
                 "error_title": "Certificate Creation Failed",
                 "error_message": "Certificate creation process failed. Please contact an administrator.",
                 "org_name": org["name"],
@@ -3974,9 +3978,9 @@ async def create_end_entity(
         if ws and not db_committed:
             _cleanup_cert_files(ws)
         return templates.TemplateResponse(
+            request,
             "error.html",
             {
-                "request": request,
                 "error_title": "Certificate Creation Failed",
                 "error_message": "Certificate creation process timed out. Please try again.",
                 "org_name": org["name"],
@@ -3989,9 +3993,9 @@ async def create_end_entity(
         if ws and not db_committed:
             _cleanup_cert_files(ws)
         return templates.TemplateResponse(
+            request,
             "error.html",
             {
-                "request": request,
                 "error_title": "Certificate Creation Failed",
                 "error_message": "An unexpected error occurred. Please contact an administrator.",
                 "org_name": org["name"],
@@ -4015,9 +4019,9 @@ async def revoke_certificate(
     org = db.get_organization_by_id(org_id)
     if not org:
         return templates.TemplateResponse(
+            request,
             "error.html",
             {
-                "request": request,
                 "error_message": f"Organization ID {org_id} not found.",
                 "org_name": None,
             },
@@ -4027,9 +4031,9 @@ async def revoke_certificate(
     cert = db.get_certificate_by_id_for_organization(cert_id, org_id)
     if not cert:
         return templates.TemplateResponse(
+            request,
             "error.html",
             {
-                "request": request,
                 "error_message": f"Certificate not found or does not belong to this organization.",
                 "org_name": org["name"],
             },
@@ -4047,9 +4051,9 @@ async def revoke_certificate(
         critical_days = dashboard_policy.get("critical_days", 30)
 
         return templates.TemplateResponse(
+            request,
             "organization_dashboard.html",
             {
-                "request": request,
                 "organization": org,
                 "root_ca_exists": root_ca_exists,
                 "stats": db.get_organization_stats(org_id),
@@ -4066,9 +4070,9 @@ async def revoke_certificate(
     if reason not in VALID_REVOCATION_REASONS:
         logger.warning(f"Invalid revocation reason '{reason}' for cert_id={cert_id}")
         return templates.TemplateResponse(
+            request,
             "error.html",
             {
-                "request": request,
                 "error_message": f"Invalid revocation reason. Valid reasons are: {', '.join(sorted(VALID_REVOCATION_REASONS))}",
                 "org_name": org["name"],
             },
@@ -4087,9 +4091,9 @@ async def revoke_certificate(
     if not issuer_cert or issuer_type not in ("root", "intermediate"):
         logger.error(f"Invalid issuer for certificate {cert_id}")
         return templates.TemplateResponse(
+            request,
             "error.html",
             {
-                "request": request,
                 "error_message": "Cannot revoke: issuer not found or invalid.",
                 "org_name": org["name"],
             },
@@ -4098,9 +4102,9 @@ async def revoke_certificate(
     # Validate root CA password if issuer is root
     if issuer_type == "root" and not root_user_password.strip():
         return templates.TemplateResponse(
+            request,
             "error.html",
             {
-                "request": request,
                 "error_title": "Revocation Failed",
                 "error_message": "Root CA password is required to revoke certificates issued by the Root CA.",
                 "org_name": org["name"],
@@ -4124,9 +4128,9 @@ async def revoke_certificate(
                 f"Attempt to revoke CA {cert_id} with active children: {child_names}"
             )
             return templates.TemplateResponse(
+                request,
                 "error.html",
                 {
-                    "request": request,
                     "error_message": f"Cannot revoke this CA certificate because it has active subordinate certificates: {child_names}. Please revoke child certificates first.",
                     "org_name": org["name"],
                 },
@@ -4136,9 +4140,9 @@ async def revoke_certificate(
     if not db.revoke_certificate(cert_id, reason):
         logger.error(f"Failed to revoke certificate {cert_id}")
         return templates.TemplateResponse(
+            request,
             "error.html",
             {
-                "request": request,
                 "error_message": "Failed to revoke certificate in database.",
                 "org_name": org["name"],
             },
@@ -4171,9 +4175,9 @@ async def revoke_certificate(
     critical_days = dashboard_policy.get("critical_days", 30)
 
     return templates.TemplateResponse(
+        request,
         "organization_dashboard.html",
         {
-            "request": request,
             "organization": org,
             "root_ca_exists": root_ca_exists,
             "stats": db.get_organization_stats(org_id),
