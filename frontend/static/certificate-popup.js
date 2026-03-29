@@ -104,16 +104,6 @@ document.addEventListener('DOMContentLoaded', () => {
         closeBtn.addEventListener('click', () => window.close());
     }
 
-    // P12 password modal bindings (if they exist on this page)
-    const p12Btn = document.querySelector('button.btn-secondary');
-    if (p12Btn && p12Btn.textContent.includes('Download P12')) {
-        const orgId = p12Btn.getAttribute('data-org-id');
-        const certId = p12Btn.getAttribute('data-cert-id');
-        if (orgId && certId) {
-            p12Btn.addEventListener('click', () => showP12Password(orgId, certId));
-        }
-    }
-
     // P12 modal copy button
     const p12CopyBtn = document.getElementById('p12CopyBtn');
     if (p12CopyBtn) {
@@ -124,5 +114,14 @@ document.addEventListener('DOMContentLoaded', () => {
     const p12CloseBtn = document.querySelector('#p12PasswordModal button.btn-ghost:first-child');
     if (p12CloseBtn) {
         p12CloseBtn.addEventListener('click', () => p12PasswordModal.close());
+    }
+});
+
+// P12 button via event delegation (mirrors dashboard.js approach)
+document.addEventListener('click', (e) => {
+    const p12Btn = e.target.closest('[data-org-id][data-cert-id]');
+    if (p12Btn) {
+        e.preventDefault();
+        showP12Password(p12Btn.dataset.orgId, p12Btn.dataset.certId);
     }
 });
